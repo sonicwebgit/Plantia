@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/api';
 import type { Plant, Task } from '../types';
 import { Card, Spinner } from './ui';
@@ -10,6 +10,7 @@ interface TaskWithPlant extends Task {
 export const Tasks = () => {
   const [tasks, setTasks] = useState<TaskWithPlant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'today' | 'week'>('today');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -27,63 +28,108 @@ export const Tasks = () => {
     fetchData();
   }, []);
 
-  const upcomingTasks = tasks
-    .filter(t => !t.completedAt)
-    .sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime());
+  const { incomplete, completed } = useMemo(() => {
+    const now = new Date();
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+    const todayEnd = new Date(new Date().setHours(23, 59, 59, 999));
+    
+    const weekEnd = new Date(new Date().setDate(todayStart.getDate() + 7));
+    weekEnd.setHours(23, 59, 59, 999);
 
-  const completedTasks = tasks
-    .filter(t => t.completedAt)
-    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
-    .slice(0, 10); // show last 10 completed
+    const relevantTasks = tasks.filter(task => {
+      const dueDate = new Date(task.nextRunAt);
+      if (activeTab === 'today') {
+        return dueDate >= todayStart && dueDate <= todayEnd;
+      } else { // 'week'
+        return dueDate >= todayStart && dueDate <= weekEnd;
+      }
+    });
+
+    const incompleteTasks = relevantTasks
+      .filter(t => !t.completedAt)
+      .sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime());
+    
+    const completedTasks = relevantTasks
+      .filter(t => t.completedAt)
+      .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
+
+    return { incomplete: incompleteTasks, completed: completedTasks };
+  }, [tasks, activeTab]);
+
+  const renderTask = (task: TaskWithPlant) => {
+    const isComplete = !!task.completedAt;
+    const baseClasses = "flex items-center justify-between p-3 rounded-lg transition-colors";
+    const styleClasses = isComplete 
+        ? "bg-emerald-600 text-white hover:bg-emerald-700" 
+        : "bg-red-600 text-white hover:bg-red-700";
+
+    return (
+      <a key={task.id} href={`#/plant/${task.plant.id}`} className={`${baseClasses} ${styleClasses}`}>
+        <div>
+          <div className="font-semibold">{task.title}</div>
+          <div className="text-sm opacity-90">For: <span className="font-medium">{task.plant.nickname || task.plant.commonName}</span></div>
+        </div>
+        <div className="text-sm opacity-90 text-right">
+          {isComplete ? `Done: ${new Date(task.completedAt!).toLocaleDateString()}` : `Due: ${new Date(task.nextRunAt).toLocaleDateString()}`}
+        </div>
+      </a>
+    );
+  };
+
+  const TabButton = ({ tab, label }: { tab: 'today' | 'week', label: string }) => {
+    const isActive = activeTab === tab;
+    const activeClass = "bg-emerald-600 text-white shadow-md";
+    const inactiveClass = "bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600";
+    return (
+        <button onClick={() => setActiveTab(tab)} className={`w-full rounded-md py-2 text-sm font-semibold transition-all ${isActive ? activeClass : inactiveClass}`}>
+            {label}
+        </button>
+    );
+  };
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold">All Tasks</h1>
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold">Tasks</h1>
       
-      {loading ? <Spinner /> : (
-        <>
-            <div>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Upcoming</h2>
-                <Card>
-                  <div className="p-4 space-y-3">
-                      {upcomingTasks.length > 0 ? upcomingTasks.map(task => (
-                          <a key={task.id} href={`#/plant/${task.plant!.id}`} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                              <div>
-                                  <div className="font-semibold text-slate-800 dark:text-slate-200">{task.title}</div>
-                                  <div className="text-sm text-slate-500 dark:text-slate-400">For: <span className="font-medium">{task.plant!.nickname || task.plant!.commonName}</span></div>
-                              </div>
-                              <div className="text-sm text-slate-500 dark:text-slate-400 text-right">
-                                  Due: {new Date(task.nextRunAt).toLocaleDateString()}
-                              </div>
-                          </a>
-                      )) : (
-                          <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-4">No upcoming tasks. You're all caught up!</p>
-                      )}
-                  </div>
-                </Card>
-            </div>
+      <div className="flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
+          <TabButton tab="today" label="Today's Tasks" />
+          <TabButton tab="week" label="Weekly Tasks" />
+      </div>
 
-            {completedTasks.length > 0 && (
-                 <div>
-                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Recently Completed</h2>
-                    <Card>
-                      <div className="p-4 space-y-3">
-                          {completedTasks.map(task => (
-                              <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 opacity-60">
-                                  <div>
-                                      <div className="font-semibold text-slate-800 dark:text-slate-300 line-through">{task.title}</div>
-                                      <div className="text-sm text-slate-500 dark:text-slate-400">For: {task.plant!.nickname || task.plant!.commonName}</div>
-                                  </div>
-                                  <div className="text-sm text-slate-500 dark:text-slate-400 text-right">
-                                      Done: {new Date(task.completedAt!).toLocaleDateString()}
-                                  </div>
-                              </div>
-                          ))}
-                      </div>
-                    </Card>
-                </div>
+      {loading ? <Spinner /> : (
+        <div className="space-y-8">
+            {incomplete.length === 0 && completed.length === 0 ? (
+                <Card>
+                    <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-10 px-4">
+                        No tasks scheduled for {activeTab === 'today' ? 'today' : 'this week'}.
+                    </p>
+                </Card>
+            ) : (
+                <>
+                    {incomplete.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">To Do</h2>
+                            <Card>
+                                <div className="p-4 space-y-3">
+                                    {incomplete.map(renderTask)}
+                                </div>
+                            </Card>
+                        </div>
+                    )}
+
+                    {completed.length > 0 && (
+                        <div>
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Completed</h2>
+                            <Card>
+                                <div className="p-4 space-y-3">
+                                    {completed.map(renderTask)}
+                                </div>
+                            </Card>
+                        </div>
+                    )}
+                </>
             )}
-        </>
+        </div>
       )}
     </div>
   );
