@@ -4,10 +4,6 @@ import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, Stored
 
 // --- Gemini API Service ---
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-const model = 'gemini-2.5-flash';
-
 const careProfileSchema = {
     type: Type.OBJECT,
     properties: {
@@ -37,6 +33,13 @@ const identificationSchema = {
 export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
     try {
+      const apiKey = import.meta.env.VITE_API_KEY;
+      if (!apiKey || apiKey.trim() === '') {
+        throw new Error("Google API Key is not configured. Please ensure the VITE_API_KEY environment variable is set correctly.");
+      }
+      const ai = new GoogleGenAI({ apiKey });
+      const model = 'gemini-2.5-flash';
+
       const imagePart = {
         inlineData: {
           mimeType: 'image/jpeg',
@@ -66,7 +69,12 @@ export const geminiService = {
       return result as PlantIdentificationResult;
     } catch (error) {
       console.error("Error identifying plant:", error);
-      throw new Error("Failed to identify plant. The model may be unavailable or the image may be unclear.");
+      // Pass the original error message through to the UI layer.
+      if (error instanceof Error) {
+        throw error;
+      }
+      // Fallback for non-Error objects being thrown
+      throw new Error("An unexpected error occurred during plant identification.");
     }
   },
 };
