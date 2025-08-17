@@ -4,7 +4,7 @@ import { Card, Button } from './ui';
 
 type Theme = 'light' | 'dark' | 'system';
 
-export const Settings: React.FC = () => {
+export const Settings = () => {
     const [theme, setTheme] = useState<Theme>('system');
 
     useEffect(() => {

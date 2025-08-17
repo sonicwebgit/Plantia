@@ -3,7 +3,7 @@ import { db } from '../services/api';
 import type { Plant, Task } from '../types';
 import { Card, Spinner } from './ui';
 
-const PlantCard: React.FC<{ plant: Plant }> = ({ plant }) => (
+const PlantCard = ({ plant }: { plant: Plant }) => (
   <a href={`#/plant/${plant.id}`}>
     <Card className="h-full transform transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:bg-slate-800">
       <div className="p-4">
@@ -17,7 +17,7 @@ const PlantCard: React.FC<{ plant: Plant }> = ({ plant }) => (
   </a>
 );
 
-const UpcomingTasks: React.FC<{ tasks: Task[], plants: Plant[] }> = ({ tasks, plants }) => {
+const UpcomingTasks = ({ tasks, plants }: { tasks: Task[], plants: Plant[] }) => {
   const upcoming = useMemo(() => {
     const plantMap = new Map(plants.map(p => [p.id, p]));
     return tasks
@@ -52,7 +52,7 @@ const UpcomingTasks: React.FC<{ tasks: Task[], plants: Plant[] }> = ({ tasks, pl
   );
 };
 
-export const Dashboard: React.FC = () => {
+export const Dashboard = () => {
   const [plants, setPlants] = useState<Plant[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);

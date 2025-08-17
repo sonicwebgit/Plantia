@@ -1,16 +1,10 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, StoredData } from '../types';
 
 // --- Gemini API Service ---
 
-const API_KEY = process.env.API_KEY;
-
-let ai: GoogleGenAI | null = null;
-if (API_KEY) {
-  ai = new GoogleGenAI({ apiKey: API_KEY });
-} else {
-  console.warn("API_KEY environment variable not set. Gemini API calls will be disabled.");
-}
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const model = 'gemini-2.5-flash';
 
@@ -42,9 +36,6 @@ const identificationSchema = {
 
 export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
-    if (!ai) {
-        throw new Error("Gemini AI client is not initialized. Please check your API_KEY.");
-    }
     try {
       const imagePart = {
         inlineData: {

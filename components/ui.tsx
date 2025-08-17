@@ -1,6 +1,6 @@
 import React from 'react';
 
-export const Header: React.FC = () => (
+export const Header = () => (
   <header className="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm">
     <div className="mx-auto max-w-5xl px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between">
@@ -34,13 +34,13 @@ interface CardProps {
   className?: string;
 }
 
-export const Card: React.FC<CardProps> = ({ children, className = '' }) => (
+export const Card = ({ children, className = '' }: CardProps) => (
   <div className={`overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 shadow-sm ${className}`}>
     {children}
   </div>
 );
 
-export const Spinner: React.FC = () => (
+export const Spinner = () => (
     <div className="flex justify-center items-center p-4">
       <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-200 dark:border-emerald-700 border-t-emerald-600 dark:border-t-emerald-400"></div>
     </div>

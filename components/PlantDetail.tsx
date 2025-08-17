@@ -11,7 +11,7 @@ interface PlantDetailsData {
   tasks: Task[];
 }
 
-const CareProfileSection: React.FC<{ careProfile: CareProfile | null }> = ({ careProfile }) => {
+const CareProfileSection = ({ careProfile }: { careProfile: CareProfile | null }) => {
     if (!careProfile) return null;
     const details = [
         { label: 'Sunlight', value: careProfile.sunlight },
@@ -39,7 +39,7 @@ const CareProfileSection: React.FC<{ careProfile: CareProfile | null }> = ({ car
     );
 };
 
-const PhotoGrid: React.FC<{ initialPhotos: Photo[], plantId: string, onPhotoAdded: (photo: Photo) => void }> = ({ initialPhotos, plantId, onPhotoAdded }) => {
+const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Photo[], plantId: string, onPhotoAdded: (photo: Photo) => void }) => {
     const [photos, setPhotos] = useState(initialPhotos);
     const [uploading, setUploading] = useState(false);
     
@@ -78,7 +78,7 @@ const PhotoGrid: React.FC<{ initialPhotos: Photo[], plantId: string, onPhotoAdde
     );
 };
 
-const TaskList: React.FC<{ initialTasks: Task[], plantId: string, onTasksUpdated: (tasks: Task[]) => void }> = ({ initialTasks, plantId, onTasksUpdated }) => {
+const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Task[], plantId: string, onTasksUpdated: (tasks: Task[]) => void }) => {
     const [tasks, setTasks] = useState(initialTasks);
     
     const handleComplete = async (taskId: string) => {
@@ -114,7 +114,7 @@ const TaskList: React.FC<{ initialTasks: Task[], plantId: string, onTasksUpdated
     );
 };
 
-export const PlantDetail: React.FC<{ plantId: string }> = ({ plantId }) => {
+export const PlantDetail = ({ plantId }: { plantId: string }) => {
     const [details, setDetails] = useState<PlantDetailsData | null>(null);
     const [loading, setLoading] = useState(true);
 

@@ -6,7 +6,7 @@ import { Card, Button, Spinner } from './ui';
 
 type Status = 'idle' | 'identifying' | 'identified' | 'saving' | 'error';
 
-const UploadDropzone: React.FC<{ onFile: (file: File) => void, disabled: boolean }> = ({ onFile, disabled }) => {
+const UploadDropzone = ({ onFile, disabled }: { onFile: (file: File) => void, disabled: boolean }) => {
     const [isDragging, setIsDragging] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -46,7 +46,7 @@ const UploadDropzone: React.FC<{ onFile: (file: File) => void, disabled: boolean
     );
 };
 
-export const AddPlant: React.FC = () => {
+export const AddPlant = () => {
     const [image, setImage] = useState<string | null>(null);
     const [status, setStatus] = useState<Status>('idle');
     const [result, setResult] = useState<PlantIdentificationResult | null>(null);
