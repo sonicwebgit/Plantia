@@ -3,14 +3,16 @@ import { Dashboard } from './components/Dashboard';
 import { AddPlant } from './components/AddPlant';
 import { PlantDetail } from './components/PlantDetail';
 import { Settings } from './components/Settings';
-import { Header } from './components/ui';
+import { Tasks } from './components/Tasks';
+import { Analytics } from './components/Analytics';
+import { BottomNav } from './components/ui';
 
 const App = () => {
-  const [route, setRoute] = useState<string>(window.location.hash);
+  const [route, setRoute] = useState<string>(window.location.hash || '#/');
 
   useEffect(() => {
     const handleHashChange = () => {
-      setRoute(window.location.hash);
+      setRoute(window.location.hash || '#/');
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -50,6 +52,10 @@ const App = () => {
     switch (route) {
       case '#/add':
         return <AddPlant />;
+      case '#/tasks':
+        return <Tasks />;
+      case '#/analytics':
+        return <Analytics />;
       case '#/settings':
         return <Settings />;
       case '#/':
@@ -62,13 +68,10 @@ const App = () => {
 
   return (
     <div className="min-h-screen text-slate-800 dark:text-slate-200">
-      <Header />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 pb-28">
         {renderContent()}
       </main>
-      <footer className="text-center py-4 text-slate-500 dark:text-slate-400 text-sm">
-        <p>Built with ❤️ for every leaf. &copy; {new Date().getFullYear()} Plantia.</p>
-      </footer>
+      <BottomNav currentRoute={route} />
     </div>
   );
 };
