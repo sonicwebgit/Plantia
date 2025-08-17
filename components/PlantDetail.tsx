@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/api';
 import type { Plant, CareProfile, Photo, Task } from '../types';
@@ -114,6 +115,44 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
     );
 };
 
+const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void }) => {
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDelete = async () => {
+        const isConfirmed = window.confirm(
+            `Are you sure you want to delete "${plant.nickname || plant.commonName}"? This action is permanent and cannot be undone.`
+        );
+        if (isConfirmed) {
+            setIsDeleting(true);
+            try {
+                await db.deletePlant(plant.id);
+                onDeleted();
+            } catch (error) {
+                console.error("Failed to delete plant:", error);
+                alert("Could not delete the plant. Please try again.");
+                setIsDeleting(false);
+            }
+        }
+    };
+
+    return (
+         <Card>
+            <div className="p-6 border-t border-red-200 dark:border-red-900/50">
+                <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-3">Danger Zone</h2>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p className="font-medium">Delete this plant</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Permanently remove this plant and all its data, including photos and tasks.</p>
+                    </div>
+                    <Button variant="danger" onClick={handleDelete} disabled={isDeleting} className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0">
+                        {isDeleting ? 'Deleting...' : 'Delete Plant'}
+                    </Button>
+                </div>
+            </div>
+        </Card>
+    )
+}
+
 export const PlantDetail = ({ plantId }: { plantId: string }) => {
     const [details, setDetails] = useState<PlantDetailsData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -153,6 +192,8 @@ export const PlantDetail = ({ plantId }: { plantId: string }) => {
             <CareProfileSection careProfile={careProfile} />
             <PhotoGrid initialPhotos={photos} plantId={plant.id} onPhotoAdded={(photo) => setDetails(d => d ? {...d, photos: [photo, ...d.photos]} : null)} />
             <TaskList initialTasks={tasks} plantId={plant.id} onTasksUpdated={(newTasks) => setDetails(d => d ? {...d, tasks: newTasks} : null)} />
+
+            <DangerZone plant={plant} onDeleted={() => window.location.hash = '#/'} />
         </div>
     );
 };

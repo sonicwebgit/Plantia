@@ -1,7 +1,8 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import { geminiService, db } from '../services/api';
 import type { PlantIdentificationResult } from '../types';
-import { fileToBase64 } from '../utils/helpers';
+import { fileToBase64, resizeImage } from '../utils/helpers';
 import { Card, Button, Spinner } from './ui';
 
 type Status = 'idle' | 'identifying' | 'identified' | 'saving' | 'error';
@@ -55,11 +56,15 @@ export const AddPlant = () => {
 
     const handleFileSelect = async (file: File) => {
         try {
-            const base64 = await fileToBase64(file);
+            // Resize the image to a maximum of 1024x1024 to save space in localStorage
+            // and reduce upload size for the Gemini API.
+            const resizedFile = await resizeImage(file, 1024, 1024);
+            const base64 = await fileToBase64(resizedFile);
             setImage(base64);
             handleIdentify(base64);
         } catch (err) {
-            setError('Could not read the selected file.');
+            console.error("Error processing file:", err);
+            setError('Could not read or process the selected file.');
             setStatus('error');
         }
     };
@@ -82,14 +87,19 @@ export const AddPlant = () => {
     const handleSave = async () => {
         if (!result) return;
         setStatus('saving');
+        setError(null); // Clear previous errors
         try {
-            const plant = await db.addPlant({ identification: result, nickname });
-            if(image) {
-                await db.addPhoto(plant.id, image, "Initial photo");
-            }
+            // Save plant data and initial photo in a single atomic operation
+            const plant = await db.addPlant({
+                identification: result,
+                nickname,
+                initialPhotoUrl: image
+            });
             window.location.hash = `#/plant/${plant.id}`;
         } catch (err) {
-            setError('Failed to save the plant.');
+            console.error("Error saving plant:", err);
+            const defaultMessage = 'Failed to save the plant. The device storage might be full.';
+            setError(err instanceof Error ? err.message : defaultMessage);
             setStatus('error');
         }
     };
@@ -137,7 +147,7 @@ export const AddPlant = () => {
                                         <p className="text-sm">{error}</p>
                                     </div>
                                 )}
-                                {result && (status === 'identified' || status === 'saving') && (
+                                {result && (status === 'identified' || status === 'saving' || status === 'error') && (
                                     <div className="space-y-4">
                                         <div>
                                             <p className="text-sm text-slate-500 dark:text-slate-400">AI Identified as:</p>

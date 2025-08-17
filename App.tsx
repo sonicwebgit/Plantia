@@ -23,11 +23,21 @@ const App = () => {
 
   useEffect(() => {
     const applyTheme = () => {
-      const theme = localStorage.getItem('plantia_theme') || 'system';
-      if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
+      try {
+        const theme = localStorage.getItem('plantia_theme') || 'system';
+        if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      } catch (error) {
+        console.error("Could not access localStorage for theme, using system default.", error);
+        // Fallback to system theme if localStorage is inaccessible
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+           document.documentElement.classList.add('dark');
+        } else {
+           document.documentElement.classList.remove('dark');
+        }
       }
     };
 
@@ -67,7 +77,7 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen text-slate-800 dark:text-slate-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200">
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8 pb-28">
         {renderContent()}
       </main>

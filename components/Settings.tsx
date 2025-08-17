@@ -8,16 +8,25 @@ export const Settings = () => {
     const [theme, setTheme] = useState<Theme>('system');
 
     useEffect(() => {
-        const storedTheme = localStorage.getItem('plantia_theme') as Theme | null;
-        if (storedTheme) {
-            setTheme(storedTheme);
+        try {
+            const storedTheme = localStorage.getItem('plantia_theme') as Theme | null;
+            if (storedTheme) {
+                setTheme(storedTheme);
+            }
+        } catch (error) {
+            console.error("Could not read theme from localStorage.", error);
         }
     }, []);
 
     const handleThemeChange = (newTheme: Theme) => {
         setTheme(newTheme);
-        localStorage.setItem('plantia_theme', newTheme);
-        window.dispatchEvent(new Event('themeChange'));
+        try {
+            localStorage.setItem('plantia_theme', newTheme);
+            window.dispatchEvent(new Event('themeChange'));
+        } catch (error) {
+            console.error("Could not save theme to localStorage.", error);
+            alert("Could not save theme preference. Your browser might be blocking storage access.");
+        }
     };
 
     const handleClearData = () => {

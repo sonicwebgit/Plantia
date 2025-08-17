@@ -85,18 +85,64 @@ export const geminiService = {
 const DB_KEY = 'plantia_data';
 
 const getDb = (): StoredData => {
-  const data = localStorage.getItem(DB_KEY);
-  if (data) {
-    return JSON.parse(data);
-  }
-  // Initialize with empty data if nothing is stored
   const initialData: StoredData = { plants: [], careProfiles: [], photos: [], tasks: [] };
-  localStorage.setItem(DB_KEY, JSON.stringify(initialData));
-  return initialData;
+
+  try {
+    const data = localStorage.getItem(DB_KEY);
+    if (!data) {
+      // No data exists, initialize it
+      localStorage.setItem(DB_KEY, JSON.stringify(initialData));
+      return initialData;
+    }
+    
+    // Data exists, try to parse it
+    try {
+      const parsedData = JSON.parse(data);
+      
+      // Ensure parsedData is a valid object before accessing its properties.
+      if (typeof parsedData !== 'object' || parsedData === null) {
+          throw new Error("Stored data is not a valid object.");
+      }
+
+      // Deep validation helper: ensures a property is an array and filters out any non-object/null entries within it.
+      // This prevents crashes from corrupted array contents (e.g., [plant1, null, plant3]).
+      const validateAndFilter = (arr: unknown): any[] => {
+          if (!Array.isArray(arr)) return [];
+          return arr.filter(item => item && typeof item === 'object');
+      };
+
+      return {
+        plants: validateAndFilter(parsedData.plants),
+        careProfiles: validateAndFilter(parsedData.careProfiles),
+        photos: validateAndFilter(parsedData.photos),
+        tasks: validateAndFilter(parsedData.tasks),
+      };
+    } catch (error) {
+      console.error("Failed to parse localStorage data, resetting.", error);
+      // If data is corrupt, reset it
+      localStorage.setItem(DB_KEY, JSON.stringify(initialData));
+      return initialData;
+    }
+  } catch (error) {
+    // This top-level catch handles cases where localStorage is completely inaccessible
+    // (e.g., sandboxed iframes, security settings, private browsing mode).
+    console.error("Could not access localStorage. App will use temporary data for this session.", error);
+    return initialData;
+  }
 };
 
+
 const saveDb = (data: StoredData) => {
-  localStorage.setItem(DB_KEY, JSON.stringify(data));
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify(data));
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+      console.error("LocalStorage quota exceeded:", error);
+      throw new Error("Storage is full. Could not save the plant data. Please try using a smaller image or clearing other site data.");
+    }
+    console.error("Failed to save to localStorage:", error);
+    throw new Error("An unexpected error occurred while saving data.");
+  }
 };
 
 export const db = {
@@ -106,6 +152,10 @@ export const db = {
 
   getTasks: async (): Promise<Task[]> => {
     return getDb().tasks;
+  },
+
+  getPhotos: async (): Promise<Photo[]> => {
+    return getDb().photos;
   },
 
   getPlantDetails: async (plantId: string) => {
@@ -125,6 +175,7 @@ export const db = {
     identification: PlantIdentificationResult;
     nickname?: string;
     location?: string;
+    initialPhotoUrl?: string | null;
   }): Promise<Plant> => {
     const fullDb = getDb();
     const now = new Date().toISOString();
@@ -146,9 +197,21 @@ export const db = {
       species: data.identification.species,
       ...data.identification.careProfile,
     };
-
+    
     fullDb.plants.push(newPlant);
     fullDb.careProfiles.push(newCareProfile);
+
+    // Add initial photo if provided
+    if (data.initialPhotoUrl) {
+        const newPhoto: Photo = {
+            id: `photo_${Date.now()}`,
+            plantId,
+            url: data.initialPhotoUrl,
+            notes: "Initial photo",
+            takenAt: now,
+        };
+        fullDb.photos.push(newPhoto);
+    }
     
     // Add default tasks
     const defaultTasks: Omit<Task, 'id' | 'plantId'>[] = [
@@ -164,8 +227,19 @@ export const db = {
         });
     });
 
-    saveDb(fullDb);
+    saveDb(fullDb); // Atomic save of all initial data
     return newPlant;
+  },
+  
+  deletePlant: async (plantId: string): Promise<void> => {
+    const fullDb = getDb();
+    const updatedDb: StoredData = {
+      plants: fullDb.plants.filter(p => p.id !== plantId),
+      careProfiles: fullDb.careProfiles.filter(cp => cp.plantId !== plantId),
+      photos: fullDb.photos.filter(p => p.plantId !== plantId),
+      tasks: fullDb.tasks.filter(t => t.plantId !== plantId),
+    };
+    saveDb(updatedDb);
   },
 
   addPhoto: async (plantId: string, url: string, notes?: string): Promise<Photo> => {
