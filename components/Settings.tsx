@@ -32,43 +32,64 @@ export const Settings = () => {
     const [theme, setTheme] = useState<Theme>('system');
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [notifPermission, setNotifPermission] = useState<PermissionState>('prompt');
-    const [syncPermission, setSyncPermission] = useState<PermissionState>('prompt');
+    const [syncSupported, setSyncSupported] = useState(false);
 
-    const updatePermissionsState = useCallback(async () => {
-        try {
-            if ('Notification' in window) {
-                setNotifPermission(Notification.permission as PermissionState);
-            } else {
-                setNotifPermission('denied');
-            }
-
-            // Check for periodicSync support before querying permission for it
-            if ('serviceWorker' in navigator && navigator.serviceWorker.ready && 'periodicSync' in ServiceWorkerRegistration.prototype && 'permissions' in navigator) {
-                // Query for the permission. The name 'periodic-background-sync' is
-                // added to the type definitions in sw.d.ts to avoid TS errors.
-                const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
-                setSyncPermission(status.state as PermissionState);
-            } else {
-                 setSyncPermission('prompt'); // Default to prompt if API is not supported
-            }
-        } catch (error) {
-            console.warn("Could not query for periodic-background-sync permission:", error);
-            // If the query fails for any reason, default to 'prompt'
-            setSyncPermission('prompt');
-        }
-    }, []);
-    
     useEffect(() => {
+        // Load settings from localStorage
         try {
             const storedTheme = localStorage.getItem('plantia_theme') as Theme | null;
             if (storedTheme) setTheme(storedTheme);
-            const storedNotif = localStorage.getItem('plantia_notifications_enabled') === 'true';
-            setNotificationsEnabled(storedNotif);
         } catch (error) {
-            console.error("Could not read settings from localStorage.", error);
+            console.error("Could not read theme from localStorage.", error);
         }
-        updatePermissionsState();
-    }, [updatePermissionsState]);
+        
+        const canUseNotifications =
+            typeof window !== 'undefined' &&
+            'Notification' in window &&
+            'serviceWorker' in navigator &&
+            window.isSecureContext &&
+            window.top === window;
+
+        // Check feature support and permissions
+        const checkSupportAndPermissions = async () => {
+             if (!canUseNotifications) {
+                setNotifPermission('denied'); // Treat unsupported env as 'denied' for UI purposes
+                setSyncSupported(false);
+                return;
+            }
+
+            const permissionResult = Notification.permission;
+            const permission = permissionResult === 'default' ? 'prompt' : permissionResult;
+            setNotifPermission(permission);
+            
+            const storedNotif = localStorage.getItem('plantia_notifications_enabled') === 'true';
+            setNotificationsEnabled(permission === 'granted' && storedNotif);
+            
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                setSyncSupported('periodicSync' in registration);
+            } catch (error) {
+                console.warn("Could not check for Periodic Sync support:", error);
+                setSyncSupported(false);
+            }
+        };
+
+        checkSupportAndPermissions();
+        
+        // Listen for external permission changes
+        if (canUseNotifications && navigator.permissions?.query) {
+             navigator.permissions.query({ name: 'notifications' }).then(status => {
+                status.onchange = () => {
+                    const newPermission = status.state;
+                    setNotifPermission(newPermission);
+                    if (newPermission !== 'granted') {
+                        localStorage.setItem('plantia_notifications_enabled', 'false');
+                        setNotificationsEnabled(false);
+                    }
+                };
+            });
+        }
+    }, []);
 
     const handleThemeChange = (newTheme: Theme) => {
         setTheme(newTheme);
@@ -82,42 +103,66 @@ export const Settings = () => {
     };
     
     const handleNotificationToggle = async () => {
-        const newState = !notificationsEnabled;
-        if (newState) {
-            // Enabling Notifications
-            const permission = await Notification.requestPermission();
-            setNotifPermission(permission as PermissionState);
+       const canUseNotifications =
+            typeof window !== 'undefined' &&
+            'Notification' in window &&
+            'serviceWorker' in navigator &&
+            window.isSecureContext &&
+            window.top === window;
 
-            if (permission !== 'granted') {
-                alert("Notification permission is required. Please grant it in your browser settings.");
-                return;
-            }
+        if (!canUseNotifications) {
+            alert('Notifications are unavailable in this preview environment. They will work on your deployed site (HTTPS).');
+            return;
+        }
 
-            const registration = await navigator.serviceWorker.ready;
-            if ('periodicSync' in registration && registration.periodicSync) {
-                try {
-                    await registration.periodicSync.register(NOTIFICATION_TAG, {
-                         minInterval: 12 * 60 * 60 * 1000, // 12 hours
-                    });
-                } catch (e) {
-                    console.error('Periodic Sync could not be registered!', e);
-                    alert('Background reminders could not be set up. You may need to enable this feature in your browser settings.');
-                    return; // Don't enable if sync registration fails
+        const isEnabling = !notificationsEnabled;
+
+        if (isEnabling) {
+            try {
+                const requestedPermission = await Notification.requestPermission();
+                const permission = requestedPermission === 'default' ? 'prompt' : requestedPermission;
+                setNotifPermission(permission); // Always update the permission state display
+
+                if (permission !== 'granted') {
+                    if (permission === 'denied') {
+                        alert("Notifications are blocked by your browser. Please go to your site settings to enable them for this app.");
+                    }
+                    return; // Stop if permission is not granted
                 }
+                
+                const registration = await navigator.serviceWorker.ready;
+                if ('periodicSync' in registration) {
+                    try {
+                        await registration.periodicSync.register(NOTIFICATION_TAG, {
+                            minInterval: 24 * 60 * 60 * 1000,
+                        });
+                    } catch (e) {
+                        console.warn('Periodic Sync not available or failed to register:', e);
+                    }
+                }
+
+                // ONLY set as enabled if permission was granted.
+                localStorage.setItem('plantia_notifications_enabled', 'true');
+                setNotificationsEnabled(true);
+            } catch (e) {
+                console.error('Enabling notifications failed:', e);
+                alert('An unexpected error occurred while enabling notifications.');
             }
-            localStorage.setItem('plantia_notifications_enabled', 'true');
-            setNotificationsEnabled(true);
         } else {
-            // Disabling Notifications
-            const registration = await navigator.serviceWorker.ready;
-            if ('periodicSync' in registration && registration.periodicSync) {
-                await registration.periodicSync.unregister(NOTIFICATION_TAG);
-            }
+            // Disabling
             localStorage.setItem('plantia_notifications_enabled', 'false');
             setNotificationsEnabled(false);
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                if ('periodicSync' in registration) {
+                    await registration.periodicSync.unregister(NOTIFICATION_TAG);
+                }
+            } catch (error) {
+                console.error('Failed to unregister periodic sync:', error);
+            }
         }
-         updatePermissionsState();
     };
+
 
     const handleClearData = async () => {
         const isConfirmed = window.confirm(
@@ -138,14 +183,23 @@ export const Settings = () => {
     };
     
     const getNotificationStatusText = () => {
-        if (notifPermission === 'denied') {
-            return "Notifications are blocked by your browser. Please enable them in your site settings.";
+        const canUseNotifications =
+            typeof window !== 'undefined' &&
+            'Notification' in window &&
+            'serviceWorker' in navigator &&
+            window.isSecureContext &&
+            window.top === window;
+
+        if (!canUseNotifications) {
+            return "Notifications are not available in this environment (e.g., iframe or non-HTTPS).";
         }
-         if (syncPermission === 'denied') {
-            return "Background sync is blocked. Reminders may not work when the app is closed. Please check browser settings.";
+        if (notifPermission === 'denied') {
+            return "Notifications are blocked. Please enable them in your browser's site settings.";
         }
         if (notificationsEnabled) {
-            return "You will receive reminders for daily tasks, even when the app is closed.";
+            return syncSupported
+                ? "You will receive reminders for tasks, even when the app is closed."
+                : "Reminders are on. Notifications may only appear when the app is open.";
         }
         return "Enable to receive daily task reminders.";
     };
@@ -188,7 +242,7 @@ export const Settings = () => {
                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{getNotificationStatusText()}</p>
                         </div>
                         <ToggleSwitch
-                            checked={notificationsEnabled && notifPermission === 'granted'}
+                            checked={notificationsEnabled}
                             onChange={handleNotificationToggle}
                             disabled={notifPermission === 'denied'}
                         />

@@ -7,19 +7,21 @@ if (!rootElement) {
   throw new Error("Could not find root element to mount to");
 }
 
-// Register Service Worker
-if ('serviceWorker' in navigator) {
+// Register Service Worker only in supported environments
+const canUseSW =
+  typeof window !== 'undefined' &&
+  'serviceWorker' in navigator &&
+  window.isSecureContext && // Requires HTTPS or localhost
+  window.top === window;    // Not in an iframe (like AI Studio preview)
+
+if (canUseSW) {
   window.addEventListener('load', () => {
-    // Register the service worker from the public directory.
-    // The leading slash ensures the path is resolved from the root of the domain.
     navigator.serviceWorker.register('/sw.js')
-      .then(registration => {
-        console.log('Service Worker registered with scope:', registration.scope);
-      })
-      .catch(error => {
-        console.error('Service Worker registration failed:', error);
-      });
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.warn('SW registration skipped:', err));
   });
+} else {
+    console.warn('Service worker disabled in this environment.');
 }
 
 
