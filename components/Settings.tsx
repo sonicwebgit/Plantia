@@ -35,19 +35,26 @@ export const Settings = () => {
     const [syncPermission, setSyncPermission] = useState<PermissionState>('prompt');
 
     const updatePermissionsState = useCallback(async () => {
-        if ('Notification' in window) {
-            setNotifPermission(Notification.permission as PermissionState);
-        } else {
-            setNotifPermission('denied');
-        }
+        try {
+            if ('Notification' in window) {
+                setNotifPermission(Notification.permission as PermissionState);
+            } else {
+                setNotifPermission('denied');
+            }
 
-        // Check for periodicSync support before querying permission for it
-        if ('serviceWorker' in navigator && 'permissions' in navigator && 'periodicSync' in ServiceWorkerRegistration.prototype) {
-             const status = await navigator.permissions.query({ name: 'periodic-background-sync' } as unknown as PermissionDescriptor);
-             setSyncPermission(status.state as PermissionState);
-        } else {
-             // If API not supported, assume granted if notifications are on, to not block the UI
-             setSyncPermission(localStorage.getItem('plantia_notifications_enabled') === 'true' ? 'granted' : 'prompt');
+            // Check for periodicSync support before querying permission for it
+            if ('serviceWorker' in navigator && navigator.serviceWorker.ready && 'periodicSync' in ServiceWorkerRegistration.prototype && 'permissions' in navigator) {
+                // Query for the permission. The name 'periodic-background-sync' is
+                // added to the type definitions in sw.d.ts to avoid TS errors.
+                const status = await navigator.permissions.query({ name: 'periodic-background-sync' });
+                setSyncPermission(status.state as PermissionState);
+            } else {
+                 setSyncPermission('prompt'); // Default to prompt if API is not supported
+            }
+        } catch (error) {
+            console.warn("Could not query for periodic-background-sync permission:", error);
+            // If the query fails for any reason, default to 'prompt'
+            setSyncPermission('prompt');
         }
     }, []);
     
@@ -87,7 +94,7 @@ export const Settings = () => {
             }
 
             const registration = await navigator.serviceWorker.ready;
-            if (registration.periodicSync) {
+            if ('periodicSync' in registration && registration.periodicSync) {
                 try {
                     await registration.periodicSync.register(NOTIFICATION_TAG, {
                          minInterval: 12 * 60 * 60 * 1000, // 12 hours
@@ -103,7 +110,7 @@ export const Settings = () => {
         } else {
             // Disabling Notifications
             const registration = await navigator.serviceWorker.ready;
-            if (registration.periodicSync) {
+            if ('periodicSync' in registration && registration.periodicSync) {
                 await registration.periodicSync.unregister(NOTIFICATION_TAG);
             }
             localStorage.setItem('plantia_notifications_enabled', 'false');
@@ -132,7 +139,10 @@ export const Settings = () => {
     
     const getNotificationStatusText = () => {
         if (notifPermission === 'denied') {
-            return "Notifications are blocked. Please enable them in your browser's site settings.";
+            return "Notifications are blocked by your browser. Please enable them in your site settings.";
+        }
+         if (syncPermission === 'denied') {
+            return "Background sync is blocked. Reminders may not work when the app is closed. Please check browser settings.";
         }
         if (notificationsEnabled) {
             return "You will receive reminders for daily tasks, even when the app is closed.";

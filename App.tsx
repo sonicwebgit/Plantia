@@ -6,7 +6,6 @@ import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Analytics } from './components/Analytics';
 import { BottomNav } from './components/ui';
-import { db } from './services/api';
 
 const App = () => {
   const [route, setRoute] = useState<string>(window.location.hash || '#/');
@@ -55,8 +54,9 @@ const App = () => {
   }, []);
 
   const renderContent = () => {
-    if (route.startsWith('#/plant/')) {
-      const id = route.split('/')[2];
+    const plantMatch = route.match(/^#\/plant\/(.+)/);
+    if (plantMatch) {
+      const id = plantMatch[1];
       return <PlantDetail plantId={id} />;
     }
 

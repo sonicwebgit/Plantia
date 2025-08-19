@@ -1,4 +1,3 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -11,9 +10,9 @@ if (!rootElement) {
 // Register Service Worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // Construct an absolute URL to the service worker to avoid cross-origin issues.
-    const swUrl = new URL('sw.js', window.location.href).href;
-    navigator.serviceWorker.register(swUrl)
+    // Register the service worker from the public directory.
+    // The leading slash ensures the path is resolved from the root of the domain.
+    navigator.serviceWorker.register('/sw.js')
       .then(registration => {
         console.log('Service Worker registered with scope:', registration.scope);
       })

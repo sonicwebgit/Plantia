@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult } from '../types';
 
@@ -33,12 +32,9 @@ const identificationSchema = {
 export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
     try {
-      // @ts-ignore - Using import.meta.env which is standard in Vite environments
-      const apiKey = import.meta.env.VITE_API_KEY;
-      if (!apiKey || apiKey.trim() === '') {
-        throw new Error("Google API Key is not configured. Please ensure VITE_API_KEY is set correctly in your environment.");
-      }
-      const ai = new GoogleGenAI({ apiKey });
+      // Use API key directly from environment variables as per guidelines.
+      // Assumes `process.env.API_KEY` is available in the execution environment.
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const model = 'gemini-2.5-flash';
 
       const imagePart = {
@@ -80,6 +76,9 @@ export const geminiService = {
     } catch (error) {
       console.error("Error identifying plant:", error);
       if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+           throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
+        }
         throw error;
       }
       throw new Error("An unexpected error occurred during plant identification.");
