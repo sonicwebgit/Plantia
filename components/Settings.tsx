@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/api';
 import { Card, Button } from './ui';
 
 type Theme = 'light' | 'dark' | 'system';
+type PermissionState = 'prompt' | 'granted' | 'denied';
+
+const NOTIFICATION_TAG = 'daily-task-check';
 
 // A simple toggle switch component, styled with Tailwind CSS
 const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean, onChange: () => void, disabled?: boolean }) => (
@@ -28,8 +31,26 @@ const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean, onCha
 export const Settings = () => {
     const [theme, setTheme] = useState<Theme>('system');
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-    const [permissionStatus, setPermissionStatus] = useState('Notification' in window ? Notification.permission : 'denied');
+    const [notifPermission, setNotifPermission] = useState<PermissionState>('prompt');
+    const [syncPermission, setSyncPermission] = useState<PermissionState>('prompt');
 
+    const updatePermissionsState = useCallback(async () => {
+        if ('Notification' in window) {
+            setNotifPermission(Notification.permission as PermissionState);
+        } else {
+            setNotifPermission('denied');
+        }
+
+        // Check for periodicSync support before querying permission for it
+        if ('serviceWorker' in navigator && 'permissions' in navigator && 'periodicSync' in ServiceWorkerRegistration.prototype) {
+             const status = await navigator.permissions.query({ name: 'periodic-background-sync' } as unknown as PermissionDescriptor);
+             setSyncPermission(status.state as PermissionState);
+        } else {
+             // If API not supported, assume granted if notifications are on, to not block the UI
+             setSyncPermission(localStorage.getItem('plantia_notifications_enabled') === 'true' ? 'granted' : 'prompt');
+        }
+    }, []);
+    
     useEffect(() => {
         try {
             const storedTheme = localStorage.getItem('plantia_theme') as Theme | null;
@@ -39,7 +60,8 @@ export const Settings = () => {
         } catch (error) {
             console.error("Could not read settings from localStorage.", error);
         }
-    }, []);
+        updatePermissionsState();
+    }, [updatePermissionsState]);
 
     const handleThemeChange = (newTheme: Theme) => {
         setTheme(newTheme);
@@ -53,33 +75,49 @@ export const Settings = () => {
     };
     
     const handleNotificationToggle = async () => {
-        if (permissionStatus === 'denied') {
-            alert("Notifications are blocked by your browser. Please enable them in your site settings to use this feature.");
-            return;
-        }
-
-        if (permissionStatus === 'default') {
+        const newState = !notificationsEnabled;
+        if (newState) {
+            // Enabling Notifications
             const permission = await Notification.requestPermission();
-            setPermissionStatus(permission);
-            if (permission === 'granted') {
-                localStorage.setItem('plantia_notifications_enabled', 'true');
-                setNotificationsEnabled(true);
-            }
-            return;
-        }
+            setNotifPermission(permission as PermissionState);
 
-        // If permission is already granted, just toggle the setting
-        const newEnabledState = !notificationsEnabled;
-        localStorage.setItem('plantia_notifications_enabled', String(newEnabledState));
-        setNotificationsEnabled(newEnabledState);
+            if (permission !== 'granted') {
+                alert("Notification permission is required. Please grant it in your browser settings.");
+                return;
+            }
+
+            const registration = await navigator.serviceWorker.ready;
+            if (registration.periodicSync) {
+                try {
+                    await registration.periodicSync.register(NOTIFICATION_TAG, {
+                         minInterval: 12 * 60 * 60 * 1000, // 12 hours
+                    });
+                } catch (e) {
+                    console.error('Periodic Sync could not be registered!', e);
+                    alert('Background reminders could not be set up. You may need to enable this feature in your browser settings.');
+                    return; // Don't enable if sync registration fails
+                }
+            }
+            localStorage.setItem('plantia_notifications_enabled', 'true');
+            setNotificationsEnabled(true);
+        } else {
+            // Disabling Notifications
+            const registration = await navigator.serviceWorker.ready;
+            if (registration.periodicSync) {
+                await registration.periodicSync.unregister(NOTIFICATION_TAG);
+            }
+            localStorage.setItem('plantia_notifications_enabled', 'false');
+            setNotificationsEnabled(false);
+        }
+         updatePermissionsState();
     };
 
-    const handleClearData = () => {
+    const handleClearData = async () => {
         const isConfirmed = window.confirm(
             'Are you sure you want to delete all your plant data? This action cannot be undone.'
         );
         if (isConfirmed) {
-            db.clearAllData();
+            await db.clearAllData();
             alert('All data has been cleared.');
             window.location.hash = '#/';
             window.location.reload(); // Force a reload to clear state
@@ -93,15 +131,13 @@ export const Settings = () => {
     };
     
     const getNotificationStatusText = () => {
-        if (permissionStatus === 'denied') {
-            return "Notifications are blocked by your browser. You must enable them in your site settings to use this feature.";
+        if (notifPermission === 'denied') {
+            return "Notifications are blocked. Please enable them in your browser's site settings.";
         }
-        if (permissionStatus === 'granted') {
-            return notificationsEnabled
-                ? "You will receive a reminder if you have tasks due today."
-                : "Notifications are allowed but have been turned off in the app.";
+        if (notificationsEnabled) {
+            return "You will receive reminders for daily tasks, even when the app is closed.";
         }
-        return "Enable to receive a reminder if you have tasks due today.";
+        return "Enable to receive daily task reminders.";
     };
 
     return (
@@ -137,14 +173,14 @@ export const Settings = () => {
                     <div className="flex items-start justify-between">
                         <div className="pr-4">
                            <label htmlFor="notif-toggle" className="font-medium text-slate-700 dark:text-slate-300">
-                                Daily Task Reminders
+                                Background Task Reminders
                             </label>
                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{getNotificationStatusText()}</p>
                         </div>
                         <ToggleSwitch
-                            checked={notificationsEnabled && permissionStatus === 'granted'}
+                            checked={notificationsEnabled && notifPermission === 'granted'}
                             onChange={handleNotificationToggle}
-                            disabled={permissionStatus === 'denied'}
+                            disabled={notifPermission === 'denied'}
                         />
                     </div>
                 </div>
