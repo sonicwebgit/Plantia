@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useRef } from 'react';
 import { geminiService, db } from '../services/api';
 import type { PlantIdentificationResult } from '../types';
@@ -156,7 +157,7 @@ export const AddPlant = () => {
                                         </div>
                                         <div>
                                             <label htmlFor="nickname" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nickname for your plant:</label>
-                                            <input type="text" id="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm" />
+                                            <input type="text" id="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base" />
                                         </div>
                                         <div className="text-sm p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border dark:border-slate-700">
                                             <h4 className="font-semibold mb-2">Initial Care Summary:</h4>

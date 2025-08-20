@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, geminiService } from '../services/api';
 import type { Plant, CareProfile, Photo, Task } from '../types';
@@ -191,7 +192,7 @@ const AskAISection = ({ plant }: { plant: Plant }) => {
                                     value={question}
                                     onChange={(e) => setQuestion(e.target.value)}
                                     placeholder="e.g., Why are the leaves turning yellow and crispy at the edges?"
-                                    className="w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm"
+                                    className="w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base"
                                     disabled={isLoading}
                                 />
                             </div>
