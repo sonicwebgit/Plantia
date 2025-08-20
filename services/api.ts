@@ -84,6 +84,63 @@ export const geminiService = {
       throw new Error("An unexpected error occurred during plant identification.");
     }
   },
+
+  askAboutPlant: async (
+    question: string,
+    plantContext: { species: string; commonName?: string },
+    base64Image?: string | null
+  ): Promise<string> => {
+    try {
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+      const model = 'gemini-2.5-flash';
+      
+      const prompt = `
+        You are an expert botanist and plant care assistant called Plantia AI.
+        A user has a question about their plant, a ${plantContext.commonName || ''} (${plantContext.species}).
+        
+        The user's question is: "${question}"
+
+        Analyze the question and the provided image (if any) to give a helpful, clear, and actionable answer. 
+        Structure your response for readability. If you suggest actions, use a bulleted or numbered list.
+        Be concise and focus on solving the user's problem.
+      `;
+
+      const textPart = { text: prompt };
+      const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [];
+      
+      if (base64Image) {
+        const imagePart = {
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: base64Image.split(',')[1],
+          },
+        };
+        parts.push(imagePart);
+      }
+      parts.push(textPart);
+
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: { parts: parts },
+      });
+
+      const responseText = response.text.trim();
+      if (!responseText) {
+        throw new Error("Received an empty response from the AI service.");
+      }
+      return responseText;
+
+    } catch (error) {
+      console.error("Error asking about plant:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('API key')) {
+          throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
+        }
+        throw error;
+      }
+      throw new Error("An unexpected error occurred while asking the AI.");
+    }
+  },
 };
 
 

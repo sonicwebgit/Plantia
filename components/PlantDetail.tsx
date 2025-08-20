@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { db } from '../services/api';
+import { db, geminiService } from '../services/api';
 import type { Plant, CareProfile, Photo, Task } from '../types';
 import { Card, Button, Spinner } from './ui';
-import { fileToBase64 } from '../utils/helpers';
+import { fileToBase64, resizeImage } from '../utils/helpers';
 
 interface PlantDetailsData {
   plant: Plant;
@@ -115,6 +115,145 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
     );
 };
 
+const AskAISection = ({ plant }: { plant: Plant }) => {
+    const [question, setQuestion] = useState('');
+    const [image, setImage] = useState<string | null>(null);
+    const [response, setResponse] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+    const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            const resizedFile = await resizeImage(file, 512, 512);
+            const base64 = await fileToBase64(resizedFile);
+            setImage(base64);
+        } catch (err) {
+            console.error(err);
+            setError("Failed to process image.");
+            setStatus('error');
+        }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!question.trim()) return;
+
+        setStatus('loading');
+        setError(null);
+        setResponse(null);
+
+        try {
+            const aiResponse = await geminiService.askAboutPlant(
+                question,
+                { species: plant.species, commonName: plant.commonName },
+                image
+            );
+            setResponse(aiResponse);
+            setStatus('success');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+            setStatus('error');
+        }
+    };
+
+    const handleReset = () => {
+        setQuestion('');
+        setImage(null);
+        setResponse(null);
+        setError(null);
+        setStatus('idle');
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const isLoading = status === 'loading';
+
+    return (
+        <div>
+            <h2 className="text-xl font-bold mb-3">Ask Plantia AI</h2>
+            <Card>
+                <div className="p-4 sm:p-6">
+                    {status === 'idle' && (
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Have a question about your {plant.nickname || plant.commonName}? Describe the issue, add a photo if helpful, and our AI assistant will provide advice.
+                            </p>
+                            <div>
+                                <label htmlFor="ai-question" className="sr-only">Your Question</label>
+                                <textarea
+                                    id="ai-question"
+                                    rows={4}
+                                    value={question}
+                                    onChange={(e) => setQuestion(e.target.value)}
+                                    placeholder="e.g., Why are the leaves turning yellow and crispy at the edges?"
+                                    className="w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm"
+                                    disabled={isLoading}
+                                />
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                               <div className="flex items-center gap-3">
+                                   <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>
+                                       {image ? 'Change Photo' : 'Add Photo'}
+                                   </Button>
+                                   <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageSelect} />
+                                   {image && (
+                                       <div className="relative">
+                                           <img src={image} alt="Question preview" className="h-10 w-10 rounded object-cover" />
+                                           <button type="button" onClick={() => { setImage(null); if(fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-slate-600 text-white flex items-center justify-center text-xs" aria-label="Remove image">&times;</button>
+                                       </div>
+                                   )}
+                               </div>
+                                <Button type="submit" disabled={isLoading || !question.trim()}>
+                                    {isLoading ? 'Thinking...' : 'Ask AI'}
+                                </Button>
+                            </div>
+                        </form>
+                    )}
+
+                    {status === 'loading' && (
+                         <div className="text-center p-8 space-y-3">
+                            <Spinner />
+                            <p className="font-semibold text-emerald-700 dark:text-emerald-400">Plantia AI is thinking...</p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">Analyzing your question and photo to find the best advice.</p>
+                        </div>
+                    )}
+                    
+                    {status === 'error' && (
+                        <div className="space-y-4">
+                            <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+                                <h3 className="font-bold">AI Assistant Error</h3>
+                                <p className="text-sm">{error}</p>
+                            </div>
+                            <Button variant="secondary" onClick={handleReset}>Try Again</Button>
+                        </div>
+                    )}
+
+                    {status === 'success' && response && (
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="font-semibold text-slate-700 dark:text-slate-300">Your Question:</h3>
+                                <p className="text-sm italic text-slate-500 dark:text-slate-400">"{question}"</p>
+                            </div>
+                             <div className="p-4 bg-emerald-50 dark:bg-slate-800/50 rounded-lg border dark:border-slate-700 space-y-3">
+                                <h3 className="font-semibold text-emerald-800 dark:text-emerald-300">Plantia AI's Answer:</h3>
+                                <div className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300" dangerouslySetInnerHTML={{ __html: response.replace(/\\n/g, '<br />') }}>
+                                </div>
+                            </div>
+                            <Button variant="secondary" onClick={handleReset}>Ask Another Question</Button>
+                        </div>
+                    )}
+                </div>
+            </Card>
+        </div>
+    );
+};
+
+
 const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void }) => {
     const [isDeleting, setIsDeleting] = useState(false);
 
@@ -192,6 +331,8 @@ export const PlantDetail = ({ plantId }: { plantId: string }) => {
             <CareProfileSection careProfile={careProfile} />
             <PhotoGrid initialPhotos={photos} plantId={plant.id} onPhotoAdded={(photo) => setDetails(d => d ? {...d, photos: [photo, ...d.photos]} : null)} />
             <TaskList initialTasks={tasks} plantId={plant.id} onTasksUpdated={(newTasks) => setDetails(d => d ? {...d, tasks: newTasks} : null)} />
+
+            <AskAISection plant={plant} />
 
             <DangerZone plant={plant} onDeleted={() => window.location.hash = '#/'} />
         </div>
