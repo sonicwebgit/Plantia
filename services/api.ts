@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult } from '../types';
+import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, AIHistory } from '../types';
 
 // --- Gemini API Service ---
 
@@ -63,25 +63,26 @@ export const geminiService = {
       try {
         const jsonString = response.text.trim();
         if (!jsonString) {
-            throw new Error("Received an empty response from the AI service.");
+            throw new Error("errors.gemini.emptyResponse");
         }
         const result = JSON.parse(jsonString);
         return result as PlantIdentificationResult;
       } catch (parseError) {
         console.error("Error parsing JSON response from Gemini:", parseError);
         console.error("Raw response text from Gemini:", response.text);
-        throw new Error("The AI service returned an invalid response. Please try again.");
+        throw new Error("errors.gemini.invalidResponse");
       }
 
     } catch (error) {
       console.error("Error identifying plant:", error);
       if (error instanceof Error) {
         if (error.message.includes('API key')) {
-           throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
+           throw new Error("errors.gemini.invalidApiKey");
         }
+        // rethrow other errors with their original messages (which might be keys already)
         throw error;
       }
-      throw new Error("An unexpected error occurred during plant identification.");
+      throw new Error("errors.gemini.unknownIdentify");
     }
   },
 
@@ -126,7 +127,7 @@ export const geminiService = {
 
       const responseText = response.text.trim();
       if (!responseText) {
-        throw new Error("Received an empty response from the AI service.");
+        throw new Error("errors.gemini.emptyResponse");
       }
       return responseText;
 
@@ -134,11 +135,11 @@ export const geminiService = {
       console.error("Error asking about plant:", error);
       if (error instanceof Error) {
         if (error.message.includes('API key')) {
-          throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
+          throw new Error("errors.gemini.invalidApiKey");
         }
         throw error;
       }
-      throw new Error("An unexpected error occurred while asking the AI.");
+      throw new Error("errors.gemini.unknownAsk");
     }
   },
 };
@@ -147,8 +148,8 @@ export const geminiService = {
 // --- IndexedDB Service ---
 
 const DB_NAME = 'PlantiaDB';
-const DB_VERSION = 1;
-const STORES = ['plants', 'careProfiles', 'photos', 'tasks'];
+const DB_VERSION = 2; // Incremented version for schema change
+const STORES = ['plants', 'careProfiles', 'photos', 'tasks', 'settings', 'aiHistory'];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -175,6 +176,13 @@ const getDb = (): Promise<IDBDatabase> => {
             if (!db.objectStoreNames.contains('tasks')) {
                 const taskStore = db.createObjectStore('tasks', { keyPath: 'id' });
                 taskStore.createIndex('plantId', 'plantId', { unique: false });
+            }
+             if (!db.objectStoreNames.contains('settings')) {
+                db.createObjectStore('settings', { keyPath: 'key' });
+            }
+            if (!db.objectStoreNames.contains('aiHistory')) {
+                const historyStore = db.createObjectStore('aiHistory', { keyPath: 'id' });
+                historyStore.createIndex('plantId', 'plantId', { unique: false });
             }
         };
 
@@ -239,12 +247,14 @@ export const db = {
         const careProfile = await promisifyRequest(tx.objectStore('careProfiles').index('plantId').get(plantId));
         const photos = await promisifyRequest(tx.objectStore('photos').index('plantId').getAll(plantId));
         const tasks = await promisifyRequest(tx.objectStore('tasks').index('plantId').getAll(plantId));
+        const history = await promisifyRequest(tx.objectStore('aiHistory').index('plantId').getAll(plantId));
 
         return {
             plant,
             careProfile: careProfile || null,
             photos: photos.sort((a, b) => new Date(b.takenAt).getTime() - new Date(a.takenAt).getTime()),
             tasks: tasks.sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime()),
+            history: history.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         };
     },
 
@@ -317,6 +327,7 @@ export const db = {
         const careIndex = tx.objectStore('careProfiles').index('plantId');
         const photosIndex = tx.objectStore('photos').index('plantId');
         const tasksIndex = tx.objectStore('tasks').index('plantId');
+        const historyIndex = tx.objectStore('aiHistory').index('plantId');
         
         const careReq = careIndex.getAllKeys(plantId);
         careReq.onsuccess = () => careReq.result.forEach(key => tx.objectStore('careProfiles').delete(key));
@@ -326,6 +337,9 @@ export const db = {
 
         const tasksReq = tasksIndex.getAllKeys(plantId);
         tasksReq.onsuccess = () => tasksReq.result.forEach(key => tx.objectStore('tasks').delete(key));
+
+        const historyReq = historyIndex.getAllKeys(plantId);
+        historyReq.onsuccess = () => historyReq.result.forEach(key => tx.objectStore('aiHistory').delete(key));
 
         await promisifyTransaction(tx);
     },
@@ -368,12 +382,40 @@ export const db = {
         return updatedTask;
     },
 
+    addAIHistory: async (data: Omit<AIHistory, 'id'>): Promise<AIHistory> => {
+        const db = await getDb();
+        const tx = db.transaction('aiHistory', 'readwrite');
+        const newHistory: AIHistory = {
+            id: `ai_${Date.now()}`,
+            ...data,
+        };
+        await promisifyRequest(tx.objectStore('aiHistory').add(newHistory));
+        await promisifyTransaction(tx);
+        return newHistory;
+    },
+
     clearAllData: async (): Promise<void> => {
         const db = await getDb();
         const tx = db.transaction(STORES, 'readwrite');
         for (const storeName of STORES) {
             tx.objectStore(storeName).clear();
         }
+        await promisifyTransaction(tx);
+    },
+
+    getSetting: async <T>(key: string): Promise<T | undefined> => {
+        const db = await getDb();
+        const tx = db.transaction('settings', 'readonly');
+        const store = tx.objectStore('settings');
+        const result = await promisifyRequest(store.get(key));
+        return result ? result.value : undefined;
+    },
+
+    setSetting: async <T>(key: string, value: T): Promise<void> => {
+        const db = await getDb();
+        const tx = db.transaction('settings', 'readwrite');
+        const store = tx.objectStore('settings');
+        await promisifyRequest(store.put({ key, value }));
         await promisifyTransaction(tx);
     }
 };

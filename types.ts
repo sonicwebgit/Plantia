@@ -1,4 +1,5 @@
 
+
 export interface Plant {
   id: string;
   species: string;
@@ -41,6 +42,15 @@ export interface Task {
   completedAt?: string;
 }
 
+export interface AIHistory {
+  id: string;
+  plantId: string;
+  question: string;
+  answer: string;
+  photoUrl?: string;
+  createdAt: string;
+}
+
 export interface PlantIdentificationResult {
   species: string;
   commonName: string;
@@ -53,4 +63,5 @@ export interface StoredData {
   careProfiles: CareProfile[];
   photos: Photo[];
   tasks: Task[];
+  aiHistory: AIHistory[];
 }

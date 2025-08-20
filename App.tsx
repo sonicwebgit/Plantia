@@ -6,9 +6,12 @@ import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Analytics } from './components/Analytics';
 import { BottomNav } from './components/ui';
+import { useTranslation } from 'react-i18next';
+
 
 const App = () => {
   const [route, setRoute] = useState<string>(window.location.hash || '#/');
+  const { i18n } = useTranslation();
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -20,6 +23,11 @@ const App = () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
+
+  useEffect(() => {
+    // Set the lang attribute on the HTML element for accessibility and CSS
+    document.documentElement.lang = i18n.language;
+  }, [i18n.language]);
 
   useEffect(() => {
     const applyTheme = () => {
