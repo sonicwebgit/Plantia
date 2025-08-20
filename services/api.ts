@@ -33,8 +33,8 @@ export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
     try {
       // Use API key directly from environment variables as per guidelines.
-      // Assumes `process.env.API_KEY` is available in the execution environment.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Assumes `import.meta.env.VITE_API_KEY` is available in the execution environment.
+      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
       const model = 'gemini-2.5-flash';
 
       const imagePart = {
