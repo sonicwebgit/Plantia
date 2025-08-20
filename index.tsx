@@ -1,8 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
-import './i18n'; // Initialize i18next
-import { Spinner } from './components/ui';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -30,8 +28,6 @@ if (canUseSW) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <React.Suspense fallback={<div className="flex h-screen items-center justify-center"><Spinner /></div>}>
-      <App />
-    </React.Suspense>
+    <App />
   </React.StrictMode>
 );

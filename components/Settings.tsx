@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import { db } from '../services/api';
 import { Card, Button } from './ui';
 
@@ -30,7 +29,6 @@ const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean, onCha
 
 
 export const Settings = () => {
-    const { t, i18n } = useTranslation();
     const [theme, setTheme] = useState<Theme>('system');
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [notifPermission, setNotifPermission] = useState<PermissionState>('prompt');
@@ -100,13 +98,8 @@ export const Settings = () => {
             window.dispatchEvent(new Event('themeChange'));
         } catch (error) {
             console.error("Could not save theme to localStorage.", error);
-            alert(t('settings.themeError'));
+            alert("Could not save theme preference. Your browser might be blocking storage access.");
         }
-    };
-    
-    const handleLanguageChange = (lang: string) => {
-        i18n.changeLanguage(lang);
-        db.setSetting('language', lang);
     };
 
     const handleNotificationToggle = async () => {
@@ -118,7 +111,7 @@ export const Settings = () => {
             window.top === window;
 
         if (!canUseNotifications) {
-            alert(t('settings.notifStatus.unsupported'));
+            alert("Notifications are not available in this environment (e.g., iframe or non-HTTPS).");
             return;
         }
 
@@ -132,7 +125,7 @@ export const Settings = () => {
 
                 if (permission !== 'granted') {
                     if (permission === 'denied') {
-                        alert(t('settings.notifStatus.denied'));
+                        alert("Notifications are blocked. Please enable them in your browser's site settings.");
                     }
                     return; // Stop if permission is not granted
                 }
@@ -153,7 +146,7 @@ export const Settings = () => {
                 setNotificationsEnabled(true);
             } catch (e) {
                 console.error('Enabling notifications failed:', e);
-                alert(t('settings.notifEnableError'));
+                alert("An unexpected error occurred while enabling notifications.");
             }
         } else {
             // Disabling
@@ -172,10 +165,10 @@ export const Settings = () => {
 
 
     const handleClearData = async () => {
-        const isConfirmed = window.confirm(t('settings.clearDataConfirm'));
+        const isConfirmed = window.confirm("Are you sure you want to delete all your plant data? This action cannot be undone.");
         if (isConfirmed) {
             await db.clearAllData();
-            alert(t('settings.clearDataSuccess'));
+            alert("All data has been cleared.");
             window.location.hash = '#/';
             window.location.reload(); // Force a reload to clear state
         }
@@ -195,47 +188,36 @@ export const Settings = () => {
             window.isSecureContext &&
             window.top === window;
 
-        if (!canUseNotifications) return t('settings.notifStatus.unsupported');
-        if (notifPermission === 'denied') return t('settings.notifStatus.denied');
+        if (!canUseNotifications) return "Notifications are not available in this environment (e.g., iframe or non-HTTPS).";
+        if (notifPermission === 'denied') return "Notifications are blocked. Please enable them in your browser's site settings.";
         if (notificationsEnabled) {
-            return syncSupported ? t('settings.notifStatus.enabled_sync') : t('settings.notifStatus.enabled_no_sync');
+            return syncSupported ? "You will receive reminders for tasks, even when the app is closed." : "Reminders are on. Notifications may only appear when the app is open.";
         }
-        return t('settings.notifStatus.disabled');
+        return "Enable to receive daily task reminders.";
     };
 
     return (
         <div className="space-y-8">
             <div>
-                <h1 className="text-3xl font-bold">{t('settings.title')}</h1>
-                <p className="mt-2 text-slate-600 dark:text-slate-400">{t('settings.subtitle')}</p>
+                <h1 className="text-3xl font-bold">Settings</h1>
+                <p className="mt-2 text-slate-600 dark:text-slate-400">Manage your application preferences and data.</p>
             </div>
 
             <Card>
                 <div className="p-6">
-                    <h2 className="text-lg font-semibold mb-3">{t('settings.appearance')}</h2>
+                    <h2 className="text-lg font-semibold mb-3">Appearance</h2>
                     <div className="space-y-4">
                         <div>
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{t('settings.theme')}</label>
+                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Theme</label>
                           <div className="mt-2 flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
                               <button onClick={() => handleThemeChange('light')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'light')}`}>
-                                  {t('settings.light')}
+                                  Light
                               </button>
                                <button onClick={() => handleThemeChange('dark')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'dark')}`}>
-                                  {t('settings.dark')}
+                                  Dark
                               </button>
                                <button onClick={() => handleThemeChange('system')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'system')}`}>
-                                  {t('settings.system')}
-                              </button>
-                          </div>
-                        </div>
-                         <div>
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">{t('settings.language')}</label>
-                          <div className="mt-2 flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
-                              <button onClick={() => handleLanguageChange('en')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(i18n.language.startsWith('en'))}`}>
-                                  English
-                              </button>
-                               <button onClick={() => handleLanguageChange('mk')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(i18n.language === 'mk')}`}>
-                                  Македонски
+                                  System
                               </button>
                           </div>
                         </div>
@@ -245,11 +227,11 @@ export const Settings = () => {
             
             <Card>
                 <div className="p-6">
-                    <h2 className="text-lg font-semibold mb-4">{t('settings.notifications')}</h2>
+                    <h2 className="text-lg font-semibold mb-4">Notifications</h2>
                     <div className="flex items-start justify-between">
                         <div className="pr-4">
                            <label htmlFor="notif-toggle" className="font-medium text-slate-700 dark:text-slate-300">
-                                {t('settings.taskReminders')}
+                                Background Task Reminders
                             </label>
                              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{getNotificationStatusText()}</p>
                         </div>
@@ -264,14 +246,14 @@ export const Settings = () => {
 
              <Card>
                 <div className="p-6 border-t border-red-200 dark:border-red-900/50">
-                    <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-3">{t('settings.dangerZone')}</h2>
+                    <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-3">Danger Zone</h2>
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <p className="font-medium">{t('settings.clearAllData')}</p>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('settings.clearAllDataDesc')}</p>
+                            <p className="font-medium">Clear All Data</p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Permanently delete your entire plant collection, including all photos and tasks.</p>
                         </div>
                         <Button variant="danger" onClick={handleClearData} className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0">
-                            {t('settings.deleteAllButton')}
+                            Delete All Data
                         </Button>
                     </div>
                 </div>

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
 import { db } from '../services/api';
 import type { Plant, Task } from '../types';
 import { Card, Spinner } from './ui';
@@ -12,7 +11,6 @@ export const Tasks = () => {
   const [tasks, setTasks] = useState<TaskWithPlant[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'today' | 'week'>('today');
-  const { t, i18n } = useTranslation();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,11 +66,11 @@ export const Tasks = () => {
     return (
       <a key={task.id} href={`#/plant/${task.plant.id}`} className={`${baseClasses} ${styleClasses}`}>
         <div>
-          <div className="font-semibold">{t(`tasks.type.${task.type}`, task.title)}</div>
-          <div className="text-sm opacity-90">{t('tasks.for', { plantName: task.plant.nickname || task.plant.commonName })}</div>
+          <div className="font-semibold">{task.title}</div>
+          <div className="text-sm opacity-90">{`For: ${task.plant.nickname || task.plant.commonName}`}</div>
         </div>
         <div className="text-sm opacity-90 text-right">
-          {isComplete ? t('tasks.doneDate', { date: new Date(task.completedAt!).toLocaleDateString(i18n.language) }) : t('tasks.dueDate', { date: new Date(task.nextRunAt).toLocaleDateString(i18n.language) })}
+          {isComplete ? `Done: ${new Date(task.completedAt!).toLocaleDateString()}` : `Due: ${new Date(task.nextRunAt).toLocaleDateString()}`}
         </div>
       </a>
     );
@@ -91,11 +89,11 @@ export const Tasks = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">{t('tasks.title')}</h1>
+      <h1 className="text-3xl font-bold">Tasks</h1>
       
       <div className="flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
-          <TabButton tab="today" label={t('tasks.today')} />
-          <TabButton tab="week" label={t('tasks.week')} />
+          <TabButton tab="today" label="Today's Tasks" />
+          <TabButton tab="week" label="Weekly Tasks" />
       </div>
 
       {loading ? <Spinner /> : (
@@ -103,14 +101,14 @@ export const Tasks = () => {
             {incomplete.length === 0 && completed.length === 0 ? (
                 <Card>
                     <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-10 px-4">
-                        {activeTab === 'today' ? t('tasks.noTasksToday') : t('tasks.noTasksWeek')}
+                        {activeTab === 'today' ? 'No tasks scheduled for today.' : 'No tasks scheduled for this week.'}
                     </p>
                 </Card>
             ) : (
                 <>
                     {incomplete.length > 0 && (
                         <div>
-                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">{t('tasks.toDo')}</h2>
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">To Do</h2>
                             <Card>
                                 <div className="p-4 space-y-3">
                                     {incomplete.map(renderTask)}
@@ -121,7 +119,7 @@ export const Tasks = () => {
 
                     {completed.length > 0 && (
                         <div>
-                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">{t('tasks.completed')}</h2>
+                            <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Completed</h2>
                             <Card>
                                 <div className="p-4 space-y-3">
                                     {completed.map(renderTask)}

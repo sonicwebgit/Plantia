@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
 import { db, geminiService } from '../services/api';
 import type { Plant, CareProfile, Photo, Task, AIHistory } from '../types';
 import { Card, Button, Spinner } from './ui';
@@ -14,19 +13,18 @@ interface PlantDetailsData {
 }
 
 const CareProfileSection = ({ careProfile }: { careProfile: CareProfile | null }) => {
-    const { t } = useTranslation();
     if (!careProfile) return null;
     const details = [
-        { label: t('plantDetail.sunlight'), value: careProfile.sunlight },
-        { label: t('plantDetail.watering'), value: careProfile.watering },
-        { label: t('plantDetail.soil'), value: careProfile.soil },
-        { label: t('plantDetail.fertilizer'), value: careProfile.fertilizer },
-        { label: t('plantDetail.temp'), value: careProfile.tempRange },
-        { label: t('plantDetail.humidity'), value: careProfile.humidity },
+        { label: 'Sunlight', value: careProfile.sunlight },
+        { label: 'Watering', value: careProfile.watering },
+        { label: 'Soil', value: careProfile.soil },
+        { label: 'Fertilizer', value: careProfile.fertilizer },
+        { label: 'Temp.', value: careProfile.tempRange },
+        { label: 'Humidity', value: careProfile.humidity },
     ];
     return (
         <div>
-            <h2 className="text-xl font-bold mb-3">{t('plantDetail.careProfile')}</h2>
+            <h2 className="text-xl font-bold mb-3">Care Profile</h2>
             <Card>
                 <div className="p-4 sm:p-6 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     {details.map(d => (
@@ -45,7 +43,6 @@ const CareProfileSection = ({ careProfile }: { careProfile: CareProfile | null }
 const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Photo[], plantId: string, onPhotoAdded: (photo: Photo) => void }) => {
     const [photos, setPhotos] = useState(initialPhotos);
     const [uploading, setUploading] = useState(false);
-    const { t } = useTranslation();
     
     const handleAddPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -65,7 +62,7 @@ const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Ph
     
     return (
         <div>
-            <h2 className="text-xl font-bold mb-3">{t('plantDetail.progressPhotos')}</h2>
+            <h2 className="text-xl font-bold mb-3">Progress Photos</h2>
             <Card>
                 <div className="p-4">
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
@@ -75,7 +72,7 @@ const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Ph
                             <input type="file" accept="image/*" className="hidden" onChange={handleAddPhoto} disabled={uploading}/>
                         </label>
                     </div>
-                    {uploading && <div className="text-sm mt-2 text-slate-500 dark:text-slate-400">{t('plantDetail.uploading')}</div>}
+                    {uploading && <div className="text-sm mt-2 text-slate-500 dark:text-slate-400">Uploading...</div>}
                 </div>
             </Card>
         </div>
@@ -84,7 +81,6 @@ const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Ph
 
 const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Task[], plantId: string, onTasksUpdated: (tasks: Task[]) => void }) => {
     const [tasks, setTasks] = useState(initialTasks);
-    const { t, i18n } = useTranslation();
     
     const handleComplete = async (taskId: string) => {
         const updatedTask = await db.updateTask(taskId, { completedAt: new Date().toISOString() });
@@ -99,19 +95,19 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
 
     return (
         <div>
-            <h2 className="text-xl font-bold mb-3">{t('plantDetail.tasksAndReminders')}</h2>
+            <h2 className="text-xl font-bold mb-3">Tasks & Reminders</h2>
              <Card>
                 <div className="p-4 space-y-3">
                     {pendingTasks.length > 0 ? pendingTasks.map(task => (
                         <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700">
                            <div>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{t(`tasks.type.${task.type}`, task.title)}</div>
-                                <div className="text-sm text-slate-500 dark:text-slate-400">{t('plantDetail.due', {date: new Date(task.nextRunAt).toLocaleDateString(i18n.language)})}</div>
+                                <div className="font-semibold text-slate-800 dark:text-slate-200">{task.title}</div>
+                                <div className="text-sm text-slate-500 dark:text-slate-400">{`Due: ${new Date(task.nextRunAt).toLocaleDateString()}`}</div>
                            </div>
-                           <Button variant="secondary" size="sm" onClick={() => handleComplete(task.id)}>{t('plantDetail.markAsDone')}</Button>
+                           <Button variant="secondary" size="sm" onClick={() => handleComplete(task.id)}>Mark as Done</Button>
                         </div>
                     )) : (
-                        <p className="text-center text-slate-500 dark:text-slate-400 py-4">{t('plantDetail.noPendingTasks')}</p>
+                        <p className="text-center text-slate-500 dark:text-slate-400 py-4">No pending tasks. Well done!</p>
                     )}
                 </div>
             </Card>
@@ -144,7 +140,6 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
     const fileInputRef = React.useRef<HTMLInputElement>(null);
-    const { t } = useTranslation();
 
     const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -156,7 +151,7 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
             setImage(base64);
         } catch (err) {
             console.error(err);
-            setError(t("addPlant.errors.fileProcess"));
+            setError("Could not read or process the selected file.");
             setStatus('error');
         }
     };
@@ -192,8 +187,8 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
             setStatus('idle');
 
         } catch (err) {
-            const message = err instanceof Error ? err.message : 'errors.gemini.unknownAsk';
-            setError(t(message));
+            const message = err instanceof Error ? err.message : 'An unexpected error occurred while asking the AI.';
+            setError(message);
             setStatus('error');
         }
     };
@@ -202,11 +197,11 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
 
     return (
         <div>
-            <h2 className="text-xl font-bold mb-3">{t('plantDetail.askAI')}</h2>
+            <h2 className="text-xl font-bold mb-3">Ask Plantia AI</h2>
 
             {history.length > 0 && (
                 <div className="space-y-2 mb-6">
-                    <h3 className="text-base font-semibold text-slate-600 dark:text-slate-400">{t('plantDetail.conversationHistory')}</h3>
+                    <h3 className="text-base font-semibold text-slate-600 dark:text-slate-400">Conversation History</h3>
                     {history.map(item => <HistoryItem key={item.id} item={item} />)}
                 </div>
             )}
@@ -215,16 +210,16 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
                 <div className="p-4 sm:p-6">
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                            {t('plantDetail.askAIDesc', { plantName: plant.nickname || plant.commonName })}
+                            {`Have a question about your ${plant.nickname || plant.commonName}? Describe the issue, add a photo if helpful, and our AI assistant will provide advice.`}
                         </p>
                         <div>
-                            <label htmlFor="ai-question" className="sr-only">{t('plantDetail.yourQuestion')}</label>
+                            <label htmlFor="ai-question" className="sr-only">Your Question</label>
                             <textarea
                                 id="ai-question"
                                 rows={4}
                                 value={question}
                                 onChange={(e) => setQuestion(e.target.value)}
-                                placeholder={t('plantDetail.questionPlaceholder')}
+                                placeholder="e.g., Why are the leaves turning yellow and crispy at the edges?"
                                 className="w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900/50 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base"
                                 disabled={isLoading}
                             />
@@ -232,18 +227,18 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
                         <div className="flex items-center justify-between gap-4">
                            <div className="flex items-center gap-3">
                                <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isLoading}>
-                                   {image ? t('plantDetail.changePhoto') : t('plantDetail.addPhoto')}
+                                   {image ? 'Change Photo' : 'Add Photo'}
                                </Button>
                                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageSelect} />
                                {image && (
                                    <div className="relative">
                                        <img src={image} alt="Question preview" className="h-10 w-10 rounded object-cover" />
-                                       <button type="button" onClick={() => { setImage(null); if(fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-slate-600 text-white flex items-center justify-center text-xs" aria-label={t('plantDetail.removeImage')}>&times;</button>
+                                       <button type="button" onClick={() => { setImage(null); if(fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-slate-600 text-white flex items-center justify-center text-xs" aria-label="Remove image">&times;</button>
                                    </div>
                                )}
                            </div>
                             <Button type="submit" disabled={isLoading || !question.trim()}>
-                                {isLoading ? t('plantDetail.thinking') : t('plantDetail.askButton')}
+                                {isLoading ? 'Thinking...' : 'Ask AI'}
                             </Button>
                         </div>
                     </form>
@@ -257,10 +252,10 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
                     {status === 'error' && (
                         <div className="mt-4 space-y-4">
                             <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
-                                <h3 className="font-bold">{t('plantDetail.aiError')}</h3>
+                                <h3 className="font-bold">AI Assistant Error</h3>
                                 <p className="text-sm">{error}</p>
                             </div>
-                            <Button variant="secondary" onClick={() => { setError(null); setStatus('idle'); }}>{t('plantDetail.tryAgain')}</Button>
+                            <Button variant="secondary" onClick={() => { setError(null); setStatus('idle'); }}>Try Again</Button>
                         </div>
                     )}
                 </div>
@@ -272,10 +267,9 @@ const AskAISection = ({ plant, history, onHistoryAdded }: { plant: Plant, histor
 
 const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void }) => {
     const [isDeleting, setIsDeleting] = useState(false);
-    const { t } = useTranslation();
 
     const handleDelete = async () => {
-        const confirmMessage = t('plantDetail.deleteConfirm', { plantName: plant.nickname || plant.commonName });
+        const confirmMessage = `Are you sure you want to delete "${plant.nickname || plant.commonName}"? This action is permanent and cannot be undone.`;
         const isConfirmed = window.confirm(confirmMessage);
         
         if (isConfirmed) {
@@ -285,7 +279,7 @@ const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void 
                 onDeleted();
             } catch (error) {
                 console.error("Failed to delete plant:", error);
-                alert(t('plantDetail.deleteError'));
+                alert("Could not delete the plant. Please try again.");
                 setIsDeleting(false);
             }
         }
@@ -294,14 +288,14 @@ const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void 
     return (
          <Card>
             <div className="p-6 border-t border-red-200 dark:border-red-900/50">
-                <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-3">{t('plantDetail.dangerZone')}</h2>
+                <h2 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-3">Danger Zone</h2>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <p className="font-medium">{t('plantDetail.deleteThisPlant')}</p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('plantDetail.deleteThisPlantDesc')}</p>
+                        <p className="font-medium">Delete this plant</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Permanently remove this plant and all its data, including photos and tasks.</p>
                     </div>
                     <Button variant="danger" onClick={handleDelete} disabled={isDeleting} className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0">
-                        {isDeleting ? t('plantDetail.deletingButton') : t('plantDetail.deleteButton')}
+                        {isDeleting ? 'Deleting...' : 'Delete Plant'}
                     </Button>
                 </div>
             </div>
@@ -312,7 +306,6 @@ const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void 
 export const PlantDetail = ({ plantId }: { plantId: string }) => {
     const [details, setDetails] = useState<PlantDetailsData | null>(null);
     const [loading, setLoading] = useState(true);
-    const { t } = useTranslation();
 
     const fetchDetails = useCallback(async () => {
         setLoading(true);
@@ -331,9 +324,9 @@ export const PlantDetail = ({ plantId }: { plantId: string }) => {
 
     if (!details) {
         return <div className="text-center py-10">
-            <h2 className="text-2xl font-bold">{t('plantDetail.plantNotFound')}</h2>
-            <p className="text-slate-500 dark:text-slate-400 mt-2">{t('plantDetail.plantNotFoundDesc')}</p>
-            <a href="#/" className="mt-4 inline-block text-emerald-600 dark:text-emerald-500 hover:underline">{t('plantDetail.goToDashboard')}</a>
+            <h2 className="text-2xl font-bold">Plant Not Found</h2>
+            <p className="text-slate-500 dark:text-slate-400 mt-2">The plant you are looking for does not exist.</p>
+            <a href="#/" className="mt-4 inline-block text-emerald-600 dark:text-emerald-500 hover:underline">Go to Dashboard</a>
         </div>;
     }
 
@@ -343,7 +336,7 @@ export const PlantDetail = ({ plantId }: { plantId: string }) => {
         <div className="space-y-8">
             <div>
                 <h1 className="text-4xl font-bold text-slate-800 dark:text-slate-100">{plant.nickname || plant.commonName}</h1>
-                <p className="text-lg text-slate-500 dark:text-slate-400 italic">{plant.species} {plant.confidence && `(${t('addPlant.confidence', { percent: (plant.confidence * 100).toFixed(0) })})`}</p>
+                <p className="text-lg text-slate-500 dark:text-slate-400 italic">{plant.species} {plant.confidence && `(${(plant.confidence * 100).toFixed(0)}% confidence)`}</p>
             </div>
             
             <CareProfileSection careProfile={careProfile} />

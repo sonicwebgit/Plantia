@@ -7,8 +7,6 @@ const sw = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self
 const DB_NAME = 'PlantiaDB';
 const DB_VERSION = 1;
 
-let translations = {};
-
 /**
  * A promise-based wrapper for IndexedDB requests.
  * @template T
@@ -43,45 +41,6 @@ const getDb = () => {
 
 
 /**
- * Simple translation function with pluralization support.
- * @param {string} key - The translation key (e.g., 'sw.notification.body')
- * @param {{[x: string]: string | number}} [options] - Options like 'count'.
- * @returns {string} - The translated string.
- */
-const t = (key, options) => {
-    const { count } = options || {};
-    let chosenKey = key;
-
-    // Handle pluralization based on count
-    if (typeof count !== 'undefined') {
-        if (count === 1) {
-            chosenKey += '_one';
-        } else {
-            chosenKey += '_other';
-        }
-    }
-    
-    // Navigate nested keys
-    let template = chosenKey.split('.').reduce((obj, k) => (obj && obj[k] !== 'undefined') ? obj[k] : undefined, translations);
-    
-    // Fallback to the original key if not found
-    if (!template) {
-        template = key.split('.').reduce((obj, k) => (obj && obj[k] !== 'undefined') ? obj[k] : undefined, translations) || key;
-    }
-
-    // Replace placeholders like {{count}}
-    if (typeof template === 'string' && options) {
-        return template.replace(/\{\{(.*?)\}\}/g, (match, p1) => {
-            const trimmedKey = p1.trim();
-            return options[trimmedKey] !== undefined ? String(options[trimmedKey]) : match;
-        });
-    }
-
-    return template || key;
-}
-
-
-/**
  * Fetches all tasks from the database.
  * @returns {Promise<any[]>} A promise that resolves with an array of tasks.
  */
@@ -93,48 +52,11 @@ const getTasks = async () => {
 };
 
 /**
- * Fetches user settings (like language) from the database.
- * @param {string} key
- * @returns {Promise<any>}
- */
-const getSetting = async (key) => {
-    const db = await getDb();
-    const tx = db.transaction('settings', 'readonly');
-    const store = tx.objectStore('settings');
-    const result = await promisifyRequest(store.get(key));
-    return result ? result.value : undefined;
-};
-
-
-/**
- * Loads translations based on the user's preferred language.
- */
-const loadTranslations = async () => {
-    try {
-        const lang = await getSetting('language') || 'en';
-        const response = await fetch(`/locales/${lang}/translation.json`);
-        if (response.ok) {
-            translations = await response.json();
-        } else {
-            // Fallback to English if the language file is not found
-            const fallbackResponse = await fetch(`/locales/en/translation.json`);
-            if (fallbackResponse.ok) {
-                translations = await fallbackResponse.json();
-            }
-        }
-    } catch (error) {
-        console.error("SW: Failed to load translation files", error);
-    }
-};
-
-
-/**
  * Checks for incomplete tasks due today and shows a notification.
  */
 const checkTasksAndNotify = async () => {
     console.log("Service Worker: Running daily task check...");
     try {
-        await loadTranslations(); // Load the latest translations
         const allTasks = await getTasks();
         
         const todayStart = new Date();
@@ -149,10 +71,11 @@ const checkTasksAndNotify = async () => {
         });
 
         if (incompleteToday.length > 0) {
-            console.log(`Service Worker: Found ${incompleteToday.length} incomplete task(s).`);
             const count = incompleteToday.length;
-            await sw.registration.showNotification(t('sw.notification.title'), {
-                body: t('sw.notification.body', { count }),
+            const plural = count === 1 ? '' : 's';
+            console.log(`Service Worker: Found ${count} incomplete task(s).`);
+            await sw.registration.showNotification("Plantia Task Reminder", {
+                body: `You have ${count} plant task${plural} to complete today!`,
                 icon: '/favicon.svg',
                 badge: '/favicon.svg',
             });

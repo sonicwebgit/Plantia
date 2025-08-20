@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
 import { db } from '../services/api';
 import type { Plant, Task, Photo } from '../types';
 import { Card, Spinner } from './ui';
@@ -34,7 +33,6 @@ const StatCard = ({ icon, value, label }: { icon: React.ReactNode, value: string
 );
 
 export const Analytics = () => {
-    const { t } = useTranslation();
     // Use a single state object for clarity and to prevent inconsistent states
     const [state, setState] = useState<AnalyticsState>({
         loading: true,
@@ -69,7 +67,7 @@ export const Analytics = () => {
                 }).length;
 
                 const plantsByLocation = plants.reduce((acc, plant) => {
-                    const location = plant.location || t('analytics.unassigned');
+                    const location = plant.location || 'Unassigned';
                     acc[location] = (acc[location] || 0) + 1;
                     return acc;
                 }, {} as Record<string, number>);
@@ -101,7 +99,7 @@ export const Analytics = () => {
         return () => {
             isMounted = false;
         };
-    }, [t]); // Add `t` to dependency array to refetch on language change
+    }, []); 
 
     // Render logic based on the single state object
     
@@ -109,7 +107,7 @@ export const Analytics = () => {
     if (state.loading) {
         return (
             <div className="space-y-6">
-                <h1 className="text-3xl font-bold">{t('analytics.title')}</h1>
+                <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
                 <Spinner />
             </div>
         );
@@ -119,10 +117,10 @@ export const Analytics = () => {
     if (state.error) {
         return (
              <div className="space-y-6">
-                <h1 className="text-3xl font-bold">{t('analytics.title')}</h1>
+                <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
                 <Card>
                     <div className="p-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
-                         <h3 className="font-bold">{t('analytics.error')}</h3>
+                         <h3 className="font-bold">Error loading analytics</h3>
                          <p className="text-sm mt-1">{state.error}</p>
                     </div>
                 </Card>
@@ -134,16 +132,16 @@ export const Analytics = () => {
     if (!state.data || state.data.totalPlants === 0) {
         return (
              <div className="space-y-6">
-                <h1 className="text-3xl font-bold">{t('analytics.title')}</h1>
+                <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
                 <Card>
                     <div className="p-10 text-center">
                         <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                         </svg>
-                        <h2 className="mt-4 text-xl font-semibold text-slate-700 dark:text-slate-300">{t('analytics.noData')}</h2>
-                        <p className="mt-1 text-slate-500 dark:text-slate-400">{t('analytics.noDataDesc')}</p>
+                        <h2 className="mt-4 text-xl font-semibold text-slate-700 dark:text-slate-300">No Data Yet</h2>
+                        <p className="mt-1 text-slate-500 dark:text-slate-400">Add a plant to start seeing your collection's analytics.</p>
                          <a href="#/add" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700">
-                            {t('analytics.addPlant')}
+                            Add a Plant
                         </a>
                     </div>
                 </Card>
@@ -156,34 +154,34 @@ export const Analytics = () => {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold">{t('analytics.title')}</h1>
+            <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard 
                     value={totalPlants}
-                    label={t('analytics.totalPlants')}
+                    label="Total Plants"
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2h1a2 2 0 002-2v-1a2 2 0 012-2h1.945M7.884 4.025A9 9 0 1016.116 4.025" /></svg>}
                 />
                  <StatCard 
                     value={uniqueSpecies}
-                    label={t('analytics.uniqueSpecies')}
+                    label="Unique Species"
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2-2z" /></svg>}
                 />
                  <StatCard 
                     value={totalPhotos}
-                    label={t('analytics.photosTaken')}
+                    label="Photos Taken"
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
                 />
                  <StatCard 
                     value={tasksThisWeek}
-                    label={t('analytics.tasksThisWeek')}
+                    label="Tasks This Week"
                     icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
                 />
             </div>
 
             {Object.keys(plantsByLocation).length > 0 && (
                 <div>
-                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">{t('analytics.plantsByLocation')}</h2>
+                    <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Plants by Location</h2>
                     <Card>
                         <div className="divide-y divide-slate-200 dark:divide-slate-800">
                             {Object.entries(plantsByLocation).sort(([, a], [, b]) => b - a).map(([location, count]) => (

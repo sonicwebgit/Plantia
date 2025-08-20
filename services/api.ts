@@ -63,26 +63,26 @@ export const geminiService = {
       try {
         const jsonString = response.text.trim();
         if (!jsonString) {
-            throw new Error("errors.gemini.emptyResponse");
+            throw new Error("Received an empty response from the AI service.");
         }
         const result = JSON.parse(jsonString);
         return result as PlantIdentificationResult;
       } catch (parseError) {
         console.error("Error parsing JSON response from Gemini:", parseError);
         console.error("Raw response text from Gemini:", response.text);
-        throw new Error("errors.gemini.invalidResponse");
+        throw new Error("The AI service returned an invalid response. Please try again.");
       }
 
     } catch (error) {
       console.error("Error identifying plant:", error);
       if (error instanceof Error) {
         if (error.message.includes('API key')) {
-           throw new Error("errors.gemini.invalidApiKey");
+           throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
         }
         // rethrow other errors with their original messages (which might be keys already)
         throw error;
       }
-      throw new Error("errors.gemini.unknownIdentify");
+      throw new Error("An unexpected error occurred during plant identification.");
     }
   },
 
@@ -127,7 +127,7 @@ export const geminiService = {
 
       const responseText = response.text.trim();
       if (!responseText) {
-        throw new Error("errors.gemini.emptyResponse");
+        throw new Error("Received an empty response from the AI service.");
       }
       return responseText;
 
@@ -135,11 +135,11 @@ export const geminiService = {
       console.error("Error asking about plant:", error);
       if (error instanceof Error) {
         if (error.message.includes('API key')) {
-          throw new Error("errors.gemini.invalidApiKey");
+          throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
         }
         throw error;
       }
-      throw new Error("errors.gemini.unknownAsk");
+      throw new Error("An unexpected error occurred while asking the AI.");
     }
   },
 };
