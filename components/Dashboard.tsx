@@ -69,7 +69,7 @@ const CategoryManager = ({
                         {isAdding ? 'Adding...' : 'Add'}
                     </Button>
                 </form>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-40 overflow-y-auto">
                     {categories.length > 0 ? categories.map(cat => (
                         <div key={cat.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-2 rounded-md">
                             <span className="text-sm">{cat.name}</span>
@@ -137,12 +137,12 @@ export const Dashboard = () => {
   return (
     <div className="space-y-6">
       <div className="p-6 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/50 dark:to-teal-900/50 border border-emerald-100 dark:border-emerald-900">
-        <div className="flex justify-between items-center">
+        <div>
             <div>
                 <h1 className="text-3xl font-bold text-emerald-800 dark:text-emerald-300">Plantia</h1>
                 <p className="mt-2 text-slate-600 dark:text-slate-400">Welcome to your digital greenhouse. Here are your beloved plants, ready for some TLC.</p>
             </div>
-             <Button variant="secondary" size="sm" onClick={() => setShowCatManager(!showCatManager)}>Manage Categories</Button>
+             <Button variant="primary" onClick={() => setShowCatManager(!showCatManager)} className="mt-4">Manage Categories</Button>
         </div>
       </div>
       
