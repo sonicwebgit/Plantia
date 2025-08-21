@@ -82,6 +82,10 @@ const PhotoGrid = ({ initialPhotos, plantId, onPhotoAdded }: { initialPhotos: Ph
 const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Task[], plantId: string, onTasksUpdated: (tasks: Task[]) => void }) => {
     const [tasks, setTasks] = useState(initialTasks);
     
+    useEffect(() => {
+        setTasks(initialTasks.sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime()));
+    }, [initialTasks]);
+
     const handleComplete = async (taskId: string) => {
         try {
             const { updatedTask, newTask } = await db.markTaskComplete(taskId);
@@ -89,31 +93,39 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
             if (newTask) {
                 newTasksList.push(newTask);
             }
-            setTasks(newTasksList);
-            onTasksUpdated(newTasksList);
+            const sortedTasks = newTasksList.sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime());
+            setTasks(sortedTasks);
+            onTasksUpdated(sortedTasks);
         } catch (error) {
             console.error("Error completing task in detail view:", error);
             alert("Failed to complete task.");
         }
     };
     
-    const pendingTasks = tasks.filter(t => !t.completedAt && new Date(t.nextRunAt) <= new Date());
+    const activeTasks = tasks.filter(t => !t.completedAt);
 
     return (
         <div>
             <h2 className="text-xl font-bold mb-3">Tasks & Reminders</h2>
              <Card>
                 <div className="p-4 space-y-3">
-                    {pendingTasks.length > 0 ? pendingTasks.map(task => (
-                        <div key={task.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-700">
-                           <div>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200">{task.title}</div>
-                                <div className="text-sm text-slate-500 dark:text-slate-400">{`Due: ${new Date(task.nextRunAt).toLocaleDateString()}`}</div>
-                           </div>
-                           <Button variant="secondary" size="sm" onClick={() => handleComplete(task.id)}>Mark as Done</Button>
-                        </div>
-                    )) : (
-                        <p className="text-center text-slate-500 dark:text-slate-400 py-4">No pending tasks. Well done!</p>
+                    {activeTasks.length > 0 ? (
+                        activeTasks.map(task => {
+                            const isPending = new Date(task.nextRunAt) <= new Date();
+                            return (
+                                <div key={task.id} className={`flex items-center justify-between p-3 rounded-lg border ${isPending ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-300 dark:border-amber-700' : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-700'}`}>
+                                   <div>
+                                        <div className="font-semibold text-slate-800 dark:text-slate-200">{task.title}</div>
+                                        <div className={`text-sm ${isPending ? 'text-amber-700 dark:text-amber-400 font-medium' : 'text-slate-500 dark:text-slate-400'}`}>{`Due: ${new Date(task.nextRunAt).toLocaleDateString()}`}</div>
+                                   </div>
+                                   {isPending && (
+                                     <Button variant="secondary" size="sm" onClick={() => handleComplete(task.id)}>Mark as Done</Button>
+                                   )}
+                                </div>
+                            );
+                        })
+                    ) : (
+                        <p className="text-center text-slate-500 dark:text-slate-400 py-4">No tasks scheduled for this plant.</p>
                     )}
                 </div>
             </Card>
