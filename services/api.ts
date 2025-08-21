@@ -375,16 +375,49 @@ export const db = {
         return newTask;
     },
   
-    updateTask: async (taskId: string, updates: Partial<Pick<Task, 'completedAt'>>): Promise<Task | null> => {
+    markTaskComplete: async (taskId: string): Promise<{ updatedTask: Task; newTask?: Task }> => {
         const db = await getDb();
         const tx = db.transaction('tasks', 'readwrite');
         const store = tx.objectStore('tasks');
         const task = await promisifyRequest(store.get(taskId));
-        if (!task) return null;
 
-        const updatedTask = { ...task, ...updates };
-        await promisifyRequest(store.put(updatedTask));
-        return updatedTask;
+        if (!task) {
+          throw new Error("Task not found.");
+        }
+        
+        if (task.completedAt) {
+            console.warn(`Task ${taskId} was already completed. Ignoring.`);
+            return { updatedTask: task };
+        }
+
+        const now = new Date();
+        const updatedTask: Task = { ...task, completedAt: now.toISOString() };
+        store.put(updatedTask);
+
+        let newTask: Task | undefined = undefined;
+        const RECURRENCE_DAYS: Partial<Record<Task['type'], number>> = {
+          water: 7,
+          fertilize: 30,
+        };
+
+        const recurrenceDays = RECURRENCE_DAYS[task.type];
+
+        if (recurrenceDays) {
+          const newNextRunAt = new Date(now.getTime() + recurrenceDays * 24 * 60 * 60 * 1000);
+
+          newTask = {
+            id: `task_${Date.now()}_${Math.random()}`,
+            plantId: task.plantId,
+            type: task.type,
+            title: task.title,
+            notes: task.notes,
+            nextRunAt: newNextRunAt.toISOString(),
+          };
+          store.add(newTask);
+        }
+
+        await promisifyTransaction(tx);
+        return { updatedTask, newTask };
     },
 
     addAIHistory: async (data: Omit<AIHistory, 'id'>): Promise<AIHistory> => {

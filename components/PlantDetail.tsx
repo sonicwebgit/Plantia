@@ -83,15 +83,21 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
     const [tasks, setTasks] = useState(initialTasks);
     
     const handleComplete = async (taskId: string) => {
-        const updatedTask = await db.updateTask(taskId, { completedAt: new Date().toISOString() });
-        if(updatedTask) {
-            const newTasks = tasks.map(t => t.id === taskId ? updatedTask : t);
-            setTasks(newTasks);
-            onTasksUpdated(newTasks);
+        try {
+            const { updatedTask, newTask } = await db.markTaskComplete(taskId);
+            const newTasksList = tasks.map(t => t.id === taskId ? updatedTask : t);
+            if (newTask) {
+                newTasksList.push(newTask);
+            }
+            setTasks(newTasksList);
+            onTasksUpdated(newTasksList);
+        } catch (error) {
+            console.error("Error completing task in detail view:", error);
+            alert("Failed to complete task.");
         }
     };
     
-    const pendingTasks = tasks.filter(t => !t.completedAt);
+    const pendingTasks = tasks.filter(t => !t.completedAt && new Date(t.nextRunAt) <= new Date());
 
     return (
         <div>
