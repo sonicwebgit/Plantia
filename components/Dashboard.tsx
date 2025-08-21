@@ -63,7 +63,7 @@ const CategoryManager = ({
                         value={newCategoryName}
                         onChange={(e) => setNewCategoryName(e.target.value)}
                         placeholder="New category name..."
-                        className="flex-grow block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm"
+                        className="flex-grow block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base"
                     />
                     <Button type="submit" disabled={isAdding || !newCategoryName.trim()}>
                         {isAdding ? 'Adding...' : 'Add'}
