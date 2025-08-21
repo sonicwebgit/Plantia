@@ -94,3 +94,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ classN
   
   return <button ref={ref} className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses} ${className}`} {...props} />;
 });
+
+
+export const Badge = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
+  <span className={`inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300 ${className}`}>
+    {children}
+  </span>
+);

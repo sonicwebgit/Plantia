@@ -1,5 +1,11 @@
 
 
+export interface Category {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 export interface Plant {
   id: string;
   species: string;
@@ -7,6 +13,7 @@ export interface Plant {
   confidence?: number;
   nickname?: string;
   location?: string;
+  categoryId?: string;
   notes?: string;
   createdAt: string;
 }
@@ -33,7 +40,7 @@ export interface Photo {
 }
 
 export interface Task {
-  id: string;
+  id:string;
   plantId: string;
   type: 'water' | 'fertilize' | 'prune' | 'repot' | 'custom';
   title: string;
@@ -64,4 +71,5 @@ export interface StoredData {
   photos: Photo[];
   tasks: Task[];
   aiHistory: AIHistory[];
+  categories: Category[];
 }

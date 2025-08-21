@@ -1,54 +1,168 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/api';
-import type { Plant } from '../types';
-import { Card, Spinner } from './ui';
+import type { Plant, Category } from '../types';
+import { Card, Spinner, Button, Badge } from './ui';
 
-const PlantCard = ({ plant }: { plant: Plant }) => {
+const PlantCard = ({ plant, categoryName }: { plant: Plant, categoryName?: string }) => {
     return (
         <a href={`#/plant/${plant.id}`}>
             <Card className="h-full transform transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:bg-slate-800">
-            <div className="p-4">
-                <div className="font-bold text-lg text-emerald-800 dark:text-emerald-300 truncate">{plant.nickname || plant.commonName}</div>
-                <div className="text-sm text-slate-500 dark:text-slate-400">{plant.species}</div>
-                <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                    {`Added on ${new Date(plant.createdAt).toLocaleDateString()}`}
+                <div className="p-4 flex flex-col justify-between h-full">
+                    <div>
+                        <div className="flex justify-between items-start gap-2">
+                             <div className="flex-1">
+                                <p className="font-bold text-lg text-emerald-800 dark:text-emerald-300 truncate" title={plant.nickname || plant.commonName}>{plant.nickname || plant.commonName}</p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 italic truncate">{plant.species}</p>
+                            </div>
+                            {categoryName && <Badge className="flex-shrink-0">{categoryName}</Badge>}
+                        </div>
+                    </div>
+                    <div className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                        {`Added on ${new Date(plant.createdAt).toLocaleDateString()}`}
+                    </div>
                 </div>
-            </div>
             </Card>
         </a>
     );
 };
 
 
+const CategoryManager = ({
+    categories,
+    onAddCategory,
+    onDeleteCategory,
+    onClose
+}: {
+    categories: Category[],
+    onAddCategory: (name: string) => Promise<void>,
+    onDeleteCategory: (id: string) => Promise<void>,
+    onClose: () => void
+}) => {
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+
+    const handleAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCategoryName.trim() || isAdding) return;
+        setIsAdding(true);
+        await onAddCategory(newCategoryName.trim());
+        setNewCategoryName('');
+        setIsAdding(false);
+    };
+
+    return (
+        <Card className="mb-6">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
+                <h2 className="text-lg font-semibold">Manage Categories</h2>
+                <button onClick={onClose} className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">&times;</button>
+            </div>
+            <div className="p-4 space-y-4">
+                 <form onSubmit={handleAdd} className="flex gap-2">
+                    <input 
+                        type="text"
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        placeholder="New category name..."
+                        className="flex-grow block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm"
+                    />
+                    <Button type="submit" disabled={isAdding || !newCategoryName.trim()}>
+                        {isAdding ? 'Adding...' : 'Add'}
+                    </Button>
+                </form>
+                <div className="space-y-2">
+                    {categories.length > 0 ? categories.map(cat => (
+                        <div key={cat.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-2 rounded-md">
+                            <span className="text-sm">{cat.name}</span>
+                            <button onClick={() => onDeleteCategory(cat.id)} className="text-red-500 hover:text-red-700 dark:hover:text-red-400 text-xs font-semibold">DELETE</button>
+                        </div>
+                    )) : <p className="text-sm text-center text-slate-500 dark:text-slate-400">No categories created yet.</p>}
+                </div>
+            </div>
+        </Card>
+    );
+}
+
 export const Dashboard = () => {
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const [showCatManager, setShowCatManager] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
+  const fetchData = async () => {
       setLoading(true);
-      const plantList = await db.getPlants();
+      const [plantList, categoryList] = await Promise.all([db.getPlants(), db.getCategories()]);
       setPlants(plantList);
+      setCategories(categoryList);
       setLoading(false);
-    };
+  };
+    
+  useEffect(() => {
     fetchData();
   }, []);
+  
+  const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
+
+  const filteredPlants = useMemo(() => {
+    if (activeFilter === 'all') return plants;
+    if (activeFilter === 'uncategorized') return plants.filter(p => !p.categoryId);
+    return plants.filter(p => p.categoryId === activeFilter);
+  }, [plants, activeFilter]);
+
+  const handleAddCategory = async (name: string) => {
+    await db.addCategory(name);
+    const categoryList = await db.getCategories();
+    setCategories(categoryList);
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (window.confirm("Are you sure? Deleting a category will uncategorize any plants within it.")) {
+        await db.deleteCategory(id);
+        fetchData(); // Refetch everything to ensure state is consistent
+    }
+  };
+
+  const FilterButton = ({ filterId, label }: { filterId: string, label: string }) => {
+    const isActive = activeFilter === filterId;
+    return (
+        <button
+            onClick={() => setActiveFilter(filterId)}
+            className={`px-3 py-1 text-sm font-semibold rounded-full transition-colors ${isActive ? 'bg-emerald-600 text-white' : 'bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600'}`}
+        >
+            {label}
+        </button>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div className="p-6 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/50 dark:to-teal-900/50 border border-emerald-100 dark:border-emerald-900">
-        <h1 className="text-3xl font-bold text-emerald-800 dark:text-emerald-300">Plantia</h1>
-        <p className="mt-2 text-slate-600 dark:text-slate-400">Welcome to your digital greenhouse. Here are your beloved plants, ready for some TLC.</p>
+        <div className="flex justify-between items-center">
+            <div>
+                <h1 className="text-3xl font-bold text-emerald-800 dark:text-emerald-300">Plantia</h1>
+                <p className="mt-2 text-slate-600 dark:text-slate-400">Welcome to your digital greenhouse. Here are your beloved plants, ready for some TLC.</p>
+            </div>
+             <Button variant="secondary" size="sm" onClick={() => setShowCatManager(!showCatManager)}>Manage Categories</Button>
+        </div>
       </div>
       
+      {showCatManager && <CategoryManager categories={categories} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onClose={() => setShowCatManager(false)} />}
+
       {loading ? (
         <Spinner />
       ) : plants.length > 0 ? (
+        <>
+        <div className="flex flex-wrap gap-2 items-center">
+            <FilterButton filterId="all" label="All" />
+            {categories.map(cat => <FilterButton key={cat.id} filterId={cat.id} label={cat.name} />)}
+            <FilterButton filterId="uncategorized" label="Uncategorized" />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {plants.map((plant) => (
-            <PlantCard key={plant.id} plant={plant} />
+          {filteredPlants.map((plant) => (
+            <PlantCard key={plant.id} plant={plant} categoryName={plant.categoryId ? categoryMap.get(plant.categoryId) : undefined} />
           ))}
         </div>
+        </>
       ) : (
         <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
           <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>

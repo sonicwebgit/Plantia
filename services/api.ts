@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, AIHistory } from '../types';
+import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, AIHistory, Category } from '../types';
 
 // --- Gemini API Service ---
 
@@ -148,8 +148,8 @@ export const geminiService = {
 // --- IndexedDB Service ---
 
 const DB_NAME = 'PlantiaDB';
-const DB_VERSION = 2; // Incremented version for schema change
-const STORES = ['plants', 'careProfiles', 'photos', 'tasks', 'settings', 'aiHistory'];
+const DB_VERSION = 3; // Incremented version for schema change
+const STORES = ['plants', 'careProfiles', 'photos', 'tasks', 'settings', 'aiHistory', 'categories'];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -183,6 +183,9 @@ const getDb = (): Promise<IDBDatabase> => {
             if (!db.objectStoreNames.contains('aiHistory')) {
                 const historyStore = db.createObjectStore('aiHistory', { keyPath: 'id' });
                 historyStore.createIndex('plantId', 'plantId', { unique: false });
+            }
+            if (!db.objectStoreNames.contains('categories')) {
+                db.createObjectStore('categories', { keyPath: 'id' });
             }
         };
 
@@ -262,6 +265,7 @@ export const db = {
         identification: PlantIdentificationResult;
         nickname?: string;
         location?: string;
+        categoryId?: string;
         initialPhotoUrl?: string | null;
     }): Promise<Plant> => {
         const db = await getDb();
@@ -277,6 +281,7 @@ export const db = {
             confidence: data.identification.confidence,
             nickname: data.nickname,
             location: data.location,
+            categoryId: data.categoryId,
             createdAt: now,
         };
 
@@ -392,6 +397,56 @@ export const db = {
         await promisifyRequest(tx.objectStore('aiHistory').add(newHistory));
         await promisifyTransaction(tx);
         return newHistory;
+    },
+
+    // --- Category Methods ---
+    getCategories: async (): Promise<Category[]> => {
+        const db = await getDb();
+        const tx = db.transaction('categories', 'readonly');
+        const store = tx.objectStore('categories');
+        const categories = await promisifyRequest(store.getAll());
+        return categories.sort((a, b) => a.name.localeCompare(b.name));
+    },
+
+    addCategory: async (name: string): Promise<Category> => {
+        const db = await getDb();
+        const tx = db.transaction('categories', 'readwrite');
+        const newCategory: Category = {
+            id: `cat_${Date.now()}`,
+            name,
+            createdAt: new Date().toISOString(),
+        };
+        await promisifyRequest(tx.objectStore('categories').add(newCategory));
+        return newCategory;
+    },
+
+    deleteCategory: async (categoryId: string): Promise<void> => {
+        const db = await getDb();
+        const tx = db.transaction(['categories', 'plants'], 'readwrite');
+        
+        tx.objectStore('categories').delete(categoryId);
+
+        const plantStore = tx.objectStore('plants');
+        const cursorReq = plantStore.openCursor();
+        
+        await new Promise((resolve, reject) => {
+            cursorReq.onsuccess = () => {
+                const cursor = cursorReq.result;
+                if (cursor) {
+                    if (cursor.value.categoryId === categoryId) {
+                        const updateData = cursor.value;
+                        delete updateData.categoryId;
+                        cursor.update(updateData);
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(void 0);
+                }
+            };
+            cursorReq.onerror = () => reject(cursorReq.error);
+        });
+
+        await promisifyTransaction(tx);
     },
 
     clearAllData: async (): Promise<void> => {

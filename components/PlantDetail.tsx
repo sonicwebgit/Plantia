@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db, geminiService } from '../services/api';
-import type { Plant, CareProfile, Photo, Task, AIHistory } from '../types';
-import { Card, Button, Spinner } from './ui';
+import type { Plant, CareProfile, Photo, Task, AIHistory, Category } from '../types';
+import { Card, Button, Spinner, Badge } from './ui';
 import { fileToBase64, resizeImage } from '../utils/helpers';
 
 interface PlantDetailsData {
@@ -305,12 +305,17 @@ const DangerZone = ({ plant, onDeleted }: { plant: Plant, onDeleted: () => void 
 
 export const PlantDetail = ({ plantId }: { plantId: string }) => {
     const [details, setDetails] = useState<PlantDetailsData | null>(null);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
 
     const fetchDetails = useCallback(async () => {
         setLoading(true);
-        const data = await db.getPlantDetails(plantId);
+        const [data, catList] = await Promise.all([
+            db.getPlantDetails(plantId),
+            db.getCategories()
+        ]);
         setDetails(data);
+        setCategories(catList);
         setLoading(false);
     }, [plantId]);
 
@@ -332,11 +337,16 @@ export const PlantDetail = ({ plantId }: { plantId: string }) => {
 
     const { plant, careProfile, photos, tasks, history } = details;
 
+    const categoryName = plant.categoryId ? categories.find(c => c.id === plant.categoryId)?.name : null;
+
     return (
         <div className="space-y-8">
             <div>
-                <h1 className="text-4xl font-bold text-slate-800 dark:text-slate-100">{plant.nickname || plant.commonName}</h1>
-                <p className="text-lg text-slate-500 dark:text-slate-400 italic">{plant.species} {plant.confidence && `(${(plant.confidence * 100).toFixed(0)}% confidence)`}</p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <h1 className="text-4xl font-bold text-slate-800 dark:text-slate-100">{plant.nickname || plant.commonName}</h1>
+                    {categoryName && <Badge className="text-base py-1 px-3">{categoryName}</Badge>}
+                </div>
+                <p className="text-lg text-slate-500 dark:text-slate-400 italic mt-1">{plant.species} {plant.confidence && `(${(plant.confidence * 100).toFixed(0)}% confidence)`}</p>
             </div>
             
             <CareProfileSection careProfile={careProfile} />

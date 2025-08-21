@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { geminiService, db } from '../services/api';
-import type { PlantIdentificationResult } from '../types';
+import type { PlantIdentificationResult, Category } from '../types';
 import { fileToBase64, resizeImage } from '../utils/helpers';
 import { Card, Button, Spinner } from './ui';
 
@@ -52,6 +52,16 @@ export const AddPlant = () => {
     const [result, setResult] = useState<PlantIdentificationResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [nickname, setNickname] = useState('');
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
+    useEffect(() => {
+        const fetchCategories = async () => {
+            const catList = await db.getCategories();
+            setCategories(catList);
+        };
+        fetchCategories();
+    }, []);
 
     const handleFileSelect = async (file: File) => {
         try {
@@ -93,7 +103,8 @@ export const AddPlant = () => {
             const plant = await db.addPlant({
                 identification: result,
                 nickname,
-                initialPhotoUrl: image
+                initialPhotoUrl: image,
+                categoryId: selectedCategoryId || undefined,
             });
             window.location.hash = `#/plant/${plant.id}`;
         } catch (err) {
@@ -110,6 +121,7 @@ export const AddPlant = () => {
         setResult(null);
         setError(null);
         setNickname('');
+        setSelectedCategoryId('');
     };
 
     const isLoading = status === 'identifying' || status === 'saving';
@@ -157,6 +169,20 @@ export const AddPlant = () => {
                                         <div>
                                             <label htmlFor="nickname" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nickname for your plant:</label>
                                             <input type="text" id="nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base" />
+                                        </div>
+                                         <div>
+                                            <label htmlFor="category" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Category (Optional):</label>
+                                            <select 
+                                                id="category" 
+                                                value={selectedCategoryId} 
+                                                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                                                className="mt-1 block w-full rounded-md border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-base"
+                                            >
+                                                <option value="">Uncategorized</option>
+                                                {categories.map(cat => (
+                                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                         <div className="text-sm p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg border dark:border-slate-700">
                                             <h4 className="font-semibold mb-2">Initial Care Summary:</h4>
