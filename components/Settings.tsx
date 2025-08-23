@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../services/api';
 import { Card, Button } from './ui';
+import { useAuth } from '../contexts/AuthContext';
 
 type Theme = 'light' | 'dark' | 'system';
 type PermissionState = 'prompt' | 'granted' | 'denied';
@@ -29,6 +30,7 @@ const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean, onCha
 
 
 export const Settings = () => {
+    const { user, logout } = useAuth();
     const [theme, setTheme] = useState<Theme>('system');
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [notifPermission, setNotifPermission] = useState<PermissionState>('prompt');
@@ -174,6 +176,13 @@ export const Settings = () => {
         }
     };
 
+    const handleLogout = async () => {
+        const isConfirmed = window.confirm("Are you sure you want to sign out?");
+        if (isConfirmed) {
+            await logout();
+        }
+    };
+
     const getButtonClass = (isActive: boolean) => {
         return isActive
             ? 'bg-emerald-600 text-white'
@@ -202,6 +211,42 @@ export const Settings = () => {
                 <h1 className="text-3xl font-bold">Settings</h1>
                 <p className="mt-2 text-slate-600 dark:text-slate-400">Manage your application preferences and data.</p>
             </div>
+
+            <Card>
+                <div className="p-6">
+                    <h2 className="text-lg font-semibold mb-4">Account</h2>
+                    <div className="space-y-4">
+                        <div className="flex items-center space-x-4">
+                            {user?.image ? (
+                                <img 
+                                    src={user.image} 
+                                    alt="Profile" 
+                                    className="w-12 h-12 rounded-full"
+                                />
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-lg">
+                                        {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase()}
+                                    </span>
+                                </div>
+                            )}
+                            <div>
+                                <p className="font-medium text-slate-900 dark:text-white">{user?.name}</p>
+                                <p className="text-sm text-slate-500 dark:text-slate-400">{user?.email}</p>
+                            </div>
+                        </div>
+                        <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+                            <Button 
+                                variant="secondary" 
+                                onClick={handleLogout}
+                                className="w-full sm:w-auto"
+                            >
+                                Sign Out
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Card>
 
             <Card>
                 <div className="p-6">

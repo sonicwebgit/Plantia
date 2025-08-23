@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../services/api';
+import { adaptiveDb as db } from '../services/adaptiveApi';
 import type { Plant, Category } from '../types';
 import { Card, Spinner, Button, Badge } from './ui';
 

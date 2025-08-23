@@ -1,5 +1,38 @@
 
 
+// Authentication Types
+export interface User {
+  id: string;
+  email: string;
+  name?: string;
+  image?: string;
+  createdAt: string;
+}
+
+export interface Session {
+  id: string;
+  userId: string;
+  expiresAt: string;
+}
+
+export interface UserKey {
+  id: string;
+  userId: string;
+  hashedPassword?: string;
+  providerId: string;
+  providerUserId: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<void>;
+  logout: () => Promise<void>;
+  googleLogin: () => Promise<void>;
+}
+
+// App Data Types
 export interface Category {
   id: string;
   name: string;

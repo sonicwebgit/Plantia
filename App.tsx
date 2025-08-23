@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
+// Deployment timestamp: 2025-08-23 14:45 - Force authentication deployment
 import { Dashboard } from './components/Dashboard';
 import { AddPlant } from './components/AddPlant';
 import { PlantDetail } from './components/PlantDetail';
 import { Settings } from './components/Settings';
 import { Tasks } from './components/Tasks';
 import { Analytics } from './components/Analytics';
-import { BottomNav } from './components/ui';
+import { BottomNav, Spinner } from './components/ui';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthPage } from './components/AuthPage';
 
 
-const App = () => {
+const ProtectedApp = () => {
+  const { user, loading } = useAuth();
   const [route, setRoute] = useState<string>(window.location.hash || '#/');
 
   useEffect(() => {
@@ -59,6 +63,21 @@ const App = () => {
     };
   }, []);
 
+  // Show loading spinner while checking authentication
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+
+  // TEMPORARY: Force authentication page to always show
+  // Show auth page if user is not authenticated
+  // if (!user) {
+    return <AuthPage />;
+  // }
+
   const renderContent = () => {
     const plantMatch = route.match(/^#\/plant\/(.+)/);
     if (plantMatch) {
@@ -90,6 +109,14 @@ const App = () => {
       </main>
       <BottomNav currentRoute={route} />
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <AuthProvider>
+      <ProtectedApp />
+    </AuthProvider>
   );
 };
 
