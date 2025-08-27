@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 // Deployment timestamp: 2025-08-23 14:45 - Force authentication deployment
+// GitHub Desktop deployment test - 2025-08-27
+// MAJOR CHANGE: Testing deployment via GitHub Desktop
+// TESTING QODER → GITHUB DESKTOP CONNECTION
 import { Dashboard } from './components/Dashboard';
 import { AddPlant } from './components/AddPlant';
 import { PlantDetail } from './components/PlantDetail';
