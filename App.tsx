@@ -75,11 +75,10 @@ const ProtectedApp = () => {
     );
   }
 
-  // TEMPORARY: Force authentication page to always show
   // Show auth page if user is not authenticated
-  // if (!user) {
+  if (!user) {
     return <AuthPage />;
-  // }
+  }
 
   const renderContent = () => {
     const plantMatch = route.match(/^#\/plant\/(.+)/);
