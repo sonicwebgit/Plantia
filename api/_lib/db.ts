@@ -3,25 +3,30 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import type { User, Session, UserKey } from '../../types';
 
-const { DATABASE_URL } = process.env;
-
-if (!DATABASE_URL) {
-  console.warn('[api/_lib/db] Missing DATABASE_URL environment variable. API routes depending on DB will fail until set.');
-}
-
-export const pool = new Pool({
-  connectionString: DATABASE_URL,
-  max: 1,
-  idleTimeoutMillis: 1000,
-});
-
+// Create per-request database connections for serverless environment
 export async function query<T = any>(text: string, params?: any[]): Promise<{ rows: T[] }> {
+  const DATABASE_URL = process.env.DATABASE_URL;
+  
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is not set');
+  }
+  
+  // Create a new pool for each request to avoid serverless connection issues
+  const pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 1,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+  });
+  
   const client = await pool.connect();
   try {
     const res = await client.query<T>(text, params);
     return { rows: res.rows as T[] };
   } finally {
     client.release();
+    await pool.end();
   }
 }
 
