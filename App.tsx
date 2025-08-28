@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// Deployment timestamp: 2025-08-28 13:40 - Testing plantia_v2 webhook deployment
+// Fresh DATABASE_URL test - 2025-01-27 15:50 UTC
 // Deployment timestamp: 2025-08-23 14:45 - Force authentication deployment
 // GitHub Desktop deployment test - 2025-08-27
 // MAJOR CHANGE: Testing deployment via GitHub Desktop

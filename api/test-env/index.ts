@@ -1,4 +1,5 @@
 export async function GET(request: Request): Promise<Response> {
+  // Updated to test fresh environment variables
   try {
     const DATABASE_URL = process.env.DATABASE_URL;
     
