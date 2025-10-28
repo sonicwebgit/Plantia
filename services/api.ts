@@ -1,278 +1,239 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import type { Plant, CareProfile, Photo, Task, PlantIdentificationResult, AIHistory, Category } from '../types';
+import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
+import type { Plant, CareProfile, Photo, Task, AIHistory, Category, PlantIdentificationResult, StoredData } from '../types';
+import { v4 as uuidv4 } from 'uuid';
 
-// --- Gemini API Service ---
+// --- Gemini AI Service ---
 
-const careProfileSchema = {
-    type: Type.OBJECT,
-    properties: {
-        sunlight: { type: Type.STRING, description: "e.g., Bright indirect light" },
-        watering: { type: Type.STRING, description: "e.g., Every 7-10 days; let top 2-3cm dry" },
-        soil: { type: Type.STRING, description: "e.g., Well-draining potting mix" },
-        fertilizer: { type: Type.STRING, description: "e.g., Balanced liquid feed monthly (spring/summer)" },
-        tempRange: { type: Type.STRING, description: "e.g., 18-24°C" },
-        humidity: { type: Type.STRING, description: "e.g., Prefers high humidity" },
-        tips: { type: Type.STRING, description: "One or two concise, helpful tips." },
-    },
-    required: ["sunlight", "watering", "soil", "fertilizer", "tempRange", "humidity"]
-};
+// FIX: Per Gemini API guidelines, the API key must be obtained from an environment variable.
+// For Vite projects, this is done via `import.meta.env`.
+const apiKey = import.meta.env.VITE_API_KEY;
+if (!apiKey) {
+    // This provides a clear, developer-friendly error if the VITE_API_KEY is missing.
+    const rootEl = document.getElementById('root');
+    if (rootEl) {
+        rootEl.innerHTML = `
+            <div style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #fff5f5; color: #c53030; border: 1px solid #fc8181; border-radius: 0.5rem; margin: 2rem;">
+                <h1 style="font-size: 1.5rem; font-weight: bold;">Gemini API Key Error</h1>
+                <p>The Gemini API key is missing. Please ensure the <code>VITE_API_KEY</code> environment variable is configured for your deployment.</p>
+                <p style="font-size: 0.8rem; margin-top: 1rem;">This is a developer message. The app will not function correctly until this is resolved.</p>
+            </div>
+        `;
+    }
+    throw new Error("Gemini API key is missing. Please ensure VITE_API_KEY is configured.");
+}
+const ai = new GoogleGenAI({ apiKey });
 
-const identificationSchema = {
-    type: Type.OBJECT,
-    properties: {
-        species: { type: Type.STRING, description: "The scientific (latin) name of the plant." },
-        commonName: { type: Type.STRING, description: "The most common name for the plant." },
-        confidence: { type: Type.NUMBER, description: "A confidence score from 0.0 to 1.0 on the identification." },
-        careProfile: careProfileSchema,
-    },
-    required: ["species", "commonName", "confidence", "careProfile"]
-};
-
-
+// FIX: Export `geminiService` to make it available for use in other modules.
 export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
+    const model = 'gemini-2.5-flash';
+    const mimeType = base64Image.substring(base64Image.indexOf(":") + 1, base64Image.indexOf(";"));
+    const imageData = base64Image.substring(base64Image.indexOf(",") + 1);
+
+    const prompt = `
+      Identify the plant in the image. Provide its common name, scientific name (species), and your confidence level (0.0 to 1.0).
+      Also, generate a concise care profile for a beginner, including:
+      - sunlight: (e.g., "Bright, indirect light")
+      - watering: (e.g., "Water every 1-2 weeks, allowing soil to dry out between waterings.")
+      - soil: (e.g., "Well-draining potting mix")
+      - fertilizer: (e.g., "Feed monthly during spring/summer.")
+      - tempRange: (e.g., "18-29°C (65-85°F)")
+      - humidity: (e.g., "Average home humidity is fine.")
+      - tips: (A single, brief, helpful tip for this plant.)
+      Respond ONLY with a valid JSON object that conforms to the provided schema. Do not include any other text, markdown, or explanations.
+    `;
+
+    const schema = {
+      type: Type.OBJECT,
+      properties: {
+        species: { type: Type.STRING, description: "Scientific name of the plant." },
+        commonName: { type: Type.STRING, description: "Common name of the plant." },
+        confidence: { type: Type.NUMBER, description: "Confidence score from 0.0 to 1.0." },
+        careProfile: {
+          type: Type.OBJECT,
+          properties: {
+            sunlight: { type: Type.STRING },
+            watering: { type: Type.STRING },
+            soil: { type: Type.STRING },
+            fertilizer: { type: Type.STRING },
+            tempRange: { type: Type.STRING },
+            humidity: { type: Type.STRING },
+            tips: { type: Type.STRING },
+          },
+          required: ["sunlight", "watering", "soil", "fertilizer", "tempRange", "humidity"]
+        }
+      },
+      required: ["species", "commonName", "confidence", "careProfile"]
+    };
+
     try {
-      // Use API key directly from environment variables as per guidelines.
-      // Assumes `import.meta.env.VITE_API_KEY` is available in the execution environment.
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-      const model = 'gemini-2.5-flash';
-
-      const imagePart = {
-        inlineData: {
-          mimeType: 'image/jpeg',
-          data: base64Image.split(',')[1],
+      const response: GenerateContentResponse = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            { text: prompt },
+            { inlineData: { mimeType, data: imageData } }
+          ]
         },
-      };
-
-      const prompt = `
-        Identify the plant in this image. Provide its scientific name, common name, a confidence score between 0.0 and 1.0, 
-        and a detailed care profile. Be accurate and concise.
-      `;
-      
-      const textPart = { text: prompt };
-
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: { parts: [imagePart, textPart] },
         config: {
-          responseMimeType: 'application/json',
-          responseSchema: identificationSchema,
-        },
+          responseMimeType: "application/json",
+          responseSchema: schema
+        }
       });
-      
-      try {
-        const jsonString = response.text.trim();
-        if (!jsonString) {
-            throw new Error("Received an empty response from the AI service.");
-        }
-        const result = JSON.parse(jsonString);
-        return result as PlantIdentificationResult;
-      } catch (parseError) {
-        console.error("Error parsing JSON response from Gemini:", parseError);
-        console.error("Raw response text from Gemini:", response.text);
-        throw new Error("The AI service returned an invalid response. Please try again.");
-      }
 
-    } catch (error) {
-      console.error("Error identifying plant:", error);
-      if (error instanceof Error) {
-        if (error.message.includes('API key')) {
-           throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
-        }
-        // rethrow other errors with their original messages (which might be keys already)
-        throw error;
+      const text = response.text.trim();
+      if (!text) {
+        throw new Error("Received an empty response from the AI service.");
       }
+      return JSON.parse(text);
+    } catch (error) {
+      console.error("Gemini Identification Error:", error);
       throw new Error("An unexpected error occurred during plant identification.");
     }
   },
 
-  askAboutPlant: async (
-    question: string,
-    plantContext: { species: string; commonName?: string },
-    base64Image?: string | null
-  ): Promise<string> => {
-    try {
-      const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
-      const model = 'gemini-2.5-flash';
-      
-      const prompt = `
-        You are an expert botanist and plant care assistant called Plantia AI.
-        A user has a question about their plant, a ${plantContext.commonName || ''} (${plantContext.species}).
-        
-        The user's question is: "${question}"
+  askAboutPlant: async (question: string, plantInfo: { species: string, commonName?: string }, base64Image: string | null): Promise<string> => {
+    const model = 'gemini-2.5-flash';
+    const parts: any[] = [];
+    
+    const prompt = `
+      You are a helpful plant care assistant named Plantia.
+      A user has a question about their plant, a ${plantInfo.commonName || ''} (${plantInfo.species}).
+      Their question is: "${question}"
+      ${base64Image ? "They have also provided a photo for context." : ""}
+      Provide a helpful, concise, and easy-to-understand answer. Use markdown for formatting (e.g., bullet points with *).
+    `;
 
-        Analyze the question and the provided image (if any) to give a helpful, clear, and actionable answer. 
-        Structure your response for readability. If you suggest actions, use a bulleted or numbered list.
-        Be concise and focus on solving the user's problem.
-      `;
+    parts.push({ text: prompt });
 
-      const textPart = { text: prompt };
-      const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [];
-      
-      if (base64Image) {
-        const imagePart = {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: base64Image.split(',')[1],
-          },
-        };
-        parts.push(imagePart);
-      }
-      parts.push(textPart);
-
-      const response = await ai.models.generateContent({
-        model: model,
-        contents: { parts: parts },
-      });
-
-      const responseText = response.text.trim();
-      if (!responseText) {
-        throw new Error("Received an empty response from the AI service.");
-      }
-      return responseText;
-
-    } catch (error) {
-      console.error("Error asking about plant:", error);
-      if (error instanceof Error) {
-        if (error.message.includes('API key')) {
-          throw new Error("The Google AI API key is invalid or missing. Please check your configuration.");
-        }
-        throw error;
-      }
-      throw new Error("An unexpected error occurred while asking the AI.");
+    if (base64Image) {
+        const mimeType = base64Image.substring(base64Image.indexOf(":") + 1, base64Image.indexOf(";"));
+        const imageData = base64Image.substring(base64Image.indexOf(",") + 1);
+        parts.push({ inlineData: { mimeType, data: imageData } });
     }
-  },
+
+    try {
+        const response = await ai.models.generateContent({
+            model,
+            contents: { parts: parts }
+        });
+
+        const text = response.text;
+        if (!text) {
+          throw new Error("Received an empty response from the AI service.");
+        }
+        return text;
+    } catch (error) {
+        console.error("Gemini Ask Error:", error);
+        throw new Error("An unexpected error occurred while asking the AI.");
+    }
+  }
 };
 
 
 // --- IndexedDB Service ---
 
 const DB_NAME = 'PlantiaDB';
-const DB_VERSION = 3; // Incremented version for schema change
-const STORES = ['plants', 'careProfiles', 'photos', 'tasks', 'settings', 'aiHistory', 'categories'];
+const DB_VERSION = 1;
+const STORES: (keyof StoredData)[] = ['plants', 'careProfiles', 'photos', 'tasks', 'aiHistory', 'categories'];
 
-let dbPromise: Promise<IDBDatabase> | null = null;
+const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        STORES.forEach(storeName => {
+            if (!db.objectStoreNames.contains(storeName)) {
+                db.createObjectStore(storeName, { keyPath: 'id' });
+            }
+        });
+    };
+});
 
-const getDb = (): Promise<IDBDatabase> => {
-    if (dbPromise) {
-        return dbPromise;
-    }
-    dbPromise = new Promise((resolve, reject) => {
-        const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-        request.onupgradeneeded = (event) => {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains('plants')) {
-                db.createObjectStore('plants', { keyPath: 'id' });
-            }
-            if (!db.objectStoreNames.contains('careProfiles')) {
-                const careStore = db.createObjectStore('careProfiles', { keyPath: 'id' });
-                careStore.createIndex('plantId', 'plantId', { unique: false });
-            }
-            if (!db.objectStoreNames.contains('photos')) {
-                const photoStore = db.createObjectStore('photos', { keyPath: 'id' });
-                photoStore.createIndex('plantId', 'plantId', { unique: false });
-            }
-            if (!db.objectStoreNames.contains('tasks')) {
-                const taskStore = db.createObjectStore('tasks', { keyPath: 'id' });
-                taskStore.createIndex('plantId', 'plantId', { unique: false });
-            }
-             if (!db.objectStoreNames.contains('settings')) {
-                db.createObjectStore('settings', { keyPath: 'key' });
-            }
-            if (!db.objectStoreNames.contains('aiHistory')) {
-                const historyStore = db.createObjectStore('aiHistory', { keyPath: 'id' });
-                historyStore.createIndex('plantId', 'plantId', { unique: false });
-            }
-            if (!db.objectStoreNames.contains('categories')) {
-                db.createObjectStore('categories', { keyPath: 'id' });
-            }
-        };
-
-        request.onsuccess = (event) => {
-            resolve((event.target as IDBOpenDBRequest).result);
-        };
-
-        request.onerror = (event) => {
-            console.error("IndexedDB error:", (event.target as IDBOpenDBRequest).error);
-            reject("IndexedDB error: " + (event.target as IDBOpenDBRequest).error);
-        };
-    });
-    return dbPromise;
-};
-
-// Helper function to promisify IDBRequest
-const promisifyRequest = <T>(request: IDBRequest<T>): Promise<T> => {
+function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
-};
+}
 
-// Helper function to promisify IDBTransaction
-const promisifyTransaction = (tx: IDBTransaction): Promise<void> => {
-    return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-    });
-};
+function parseFrequency(instruction: string): number {
+    let days = 0;
+    const lowerInstruction = instruction.toLowerCase();
+    const dayMatch = lowerInstruction.match(/every (\d+)-?(\d+)? days/);
+    if (dayMatch) {
+        days = parseInt(dayMatch[1], 10);
+    } else {
+        const weekMatch = lowerInstruction.match(/every (\d+)-?(\d+)? weeks?/);
+        if (weekMatch) {
+            days = parseInt(weekMatch[1], 10) * 7;
+        } else if (lowerInstruction.includes('monthly') || lowerInstruction.includes('every 4 weeks')) {
+            days = 28;
+        } else if (lowerInstruction.includes('bi-weekly') || lowerInstruction.includes('every 2 weeks')) {
+            days = 14;
+        } else if (lowerInstruction.includes('weekly')) {
+            days = 7;
+        }
+    }
+    return days;
+}
+
+function createTaskFromProfile(plantId: string, type: 'water' | 'fertilize', title: string, instruction: string): Task | null {
+    const days = parseFrequency(instruction);
+    if (days > 0) {
+        const nextRunAt = new Date();
+        nextRunAt.setDate(nextRunAt.getDate() + days);
+        return {
+            id: uuidv4(),
+            plantId,
+            type,
+            title,
+            notes: `Based on care profile: "${instruction}"`,
+            nextRunAt: nextRunAt.toISOString()
+        };
+    }
+    return null;
+}
 
 export const db = {
     getPlants: async (): Promise<Plant[]> => {
-        const db = await getDb();
-        const tx = db.transaction('plants', 'readonly');
-        const store = tx.objectStore('plants');
-        const plants = await promisifyRequest(store.getAll());
-        return plants.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const db = await dbPromise;
+        return promisifyRequest(db.transaction('plants').objectStore('plants').getAll());
     },
-
-    getTasks: async (): Promise<Task[]> => {
-        const db = await getDb();
-        const tx = db.transaction('tasks', 'readonly');
-        const store = tx.objectStore('tasks');
-        return promisifyRequest(store.getAll());
+    getCategories: async (): Promise<Category[]> => {
+        const db = await dbPromise;
+        return promisifyRequest(db.transaction('categories').objectStore('categories').getAll());
     },
-
     getPhotos: async (): Promise<Photo[]> => {
-        const db = await getDb();
-        const tx = db.transaction('photos', 'readonly');
-        const store = tx.objectStore('photos');
-        return promisifyRequest(store.getAll());
+        const db = await dbPromise;
+        return promisifyRequest(db.transaction('photos').objectStore('photos').getAll());
+    },
+    getTasks: async (): Promise<Task[]> => {
+        const db = await dbPromise;
+        return promisifyRequest(db.transaction('tasks').objectStore('tasks').getAll());
     },
 
-    getPlantDetails: async (plantId: string) => {
-        const db = await getDb();
+    getPlantDetails: async (plantId: string): Promise<PlantDetailsData | null> => {
+        const db = await dbPromise;
         const tx = db.transaction(STORES, 'readonly');
-
-        const plant = await promisifyRequest(tx.objectStore('plants').get(plantId));
+        
+        const plant = await promisifyRequest(tx.objectStore('plants').get(plantId)) as Plant | undefined;
         if (!plant) return null;
 
-        const careProfile = await promisifyRequest(tx.objectStore('careProfiles').index('plantId').get(plantId));
-        const photos = await promisifyRequest(tx.objectStore('photos').index('plantId').getAll(plantId));
-        const tasks = await promisifyRequest(tx.objectStore('tasks').index('plantId').getAll(plantId));
-        const history = await promisifyRequest(tx.objectStore('aiHistory').index('plantId').getAll(plantId));
+        const careProfile = await promisifyRequest(tx.objectStore('careProfiles').get(plantId)) as CareProfile | undefined;
+        const photos = (await promisifyRequest(tx.objectStore('photos').getAll()) as Photo[]).filter(p => p.plantId === plantId).sort((a,b) => new Date(b.takenAt).getTime() - new Date(a.takenAt).getTime());
+        const tasks = (await promisifyRequest(tx.objectStore('tasks').getAll()) as Task[]).filter(t => t.plantId === plantId);
+        const history = (await promisifyRequest(tx.objectStore('aiHistory').getAll()) as AIHistory[]).filter(h => h.plantId === plantId).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-        return {
-            plant,
-            careProfile: careProfile || null,
-            photos: photos.sort((a, b) => new Date(b.takenAt).getTime() - new Date(a.takenAt).getTime()),
-            tasks: tasks.sort((a, b) => new Date(a.nextRunAt).getTime() - new Date(b.nextRunAt).getTime()),
-            history: history.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-        };
+        return { plant, careProfile: careProfile || null, photos, tasks, history };
     },
 
-    addPlant: async (data: {
-        identification: PlantIdentificationResult;
-        nickname?: string;
-        location?: string;
-        categoryId?: string;
-        initialPhotoUrl?: string | null;
-    }): Promise<Plant> => {
-        const db = await getDb();
+    addPlant: async (data: { identification: PlantIdentificationResult; nickname: string; initialPhotoUrl: string | null; categoryId?: string; }): Promise<Plant> => {
+        const db = await dbPromise;
         const tx = db.transaction(STORES, 'readwrite');
-        
+        const plantId = uuidv4();
         const now = new Date().toISOString();
-        const plantId = `plant_${Date.now()}`;
 
         const newPlant: Plant = {
             id: plantId,
@@ -280,230 +241,140 @@ export const db = {
             commonName: data.identification.commonName,
             confidence: data.identification.confidence,
             nickname: data.nickname,
-            location: data.location,
             categoryId: data.categoryId,
             createdAt: now,
+            photoUrl: data.initialPhotoUrl || undefined,
         };
-
-        const newCareProfile: CareProfile = {
-            id: `cp_${Date.now()}`,
-            plantId: plantId,
-            species: data.identification.species,
-            ...data.identification.careProfile,
-        };
-        
         tx.objectStore('plants').add(newPlant);
+        
+        const newCareProfile: CareProfile = { id: plantId, plantId, species: data.identification.species, ...data.identification.careProfile };
         tx.objectStore('careProfiles').add(newCareProfile);
 
         if (data.initialPhotoUrl) {
-            const newPhoto: Photo = {
-                id: `photo_${Date.now()}`,
-                plantId,
-                url: data.initialPhotoUrl,
-                notes: "Initial photo",
-                takenAt: now,
-            };
+            const newPhoto: Photo = { id: uuidv4(), plantId, url: data.initialPhotoUrl, takenAt: now };
             tx.objectStore('photos').add(newPhoto);
         }
         
-        const defaultTasks: Omit<Task, 'id' | 'plantId'>[] = [
-            { type: 'water', title: 'Water Plant', nextRunAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString() },
-            { type: 'fertilize', title: 'Fertilize', nextRunAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString() }
-        ];
+        const wateringTask = createTaskFromProfile(plantId, 'water', 'Water Plant', data.identification.careProfile.watering);
+        if(wateringTask) tx.objectStore('tasks').add(wateringTask);
 
-        defaultTasks.forEach(task => {
-            tx.objectStore('tasks').add({
-                id: `task_${Date.now()}_${Math.random()}`,
-                plantId: plantId,
-                ...task
-            });
+        const fertilizerTask = createTaskFromProfile(plantId, 'fertilize', 'Fertilize Plant', data.identification.careProfile.fertilizer);
+        if(fertilizerTask) tx.objectStore('tasks').add(fertilizerTask);
+        
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve(newPlant);
+            tx.onerror = () => reject(tx.error);
         });
-
-        await promisifyTransaction(tx);
-        return newPlant;
-    },
-  
-    deletePlant: async (plantId: string): Promise<void> => {
-        const db = await getDb();
-        const tx = db.transaction(STORES, 'readwrite');
-        
-        tx.objectStore('plants').delete(plantId);
-
-        const careIndex = tx.objectStore('careProfiles').index('plantId');
-        const photosIndex = tx.objectStore('photos').index('plantId');
-        const tasksIndex = tx.objectStore('tasks').index('plantId');
-        const historyIndex = tx.objectStore('aiHistory').index('plantId');
-        
-        const careReq = careIndex.getAllKeys(plantId);
-        careReq.onsuccess = () => careReq.result.forEach(key => tx.objectStore('careProfiles').delete(key));
-
-        const photosReq = photosIndex.getAllKeys(plantId);
-        photosReq.onsuccess = () => photosReq.result.forEach(key => tx.objectStore('photos').delete(key));
-
-        const tasksReq = tasksIndex.getAllKeys(plantId);
-        tasksReq.onsuccess = () => tasksReq.result.forEach(key => tx.objectStore('tasks').delete(key));
-
-        const historyReq = historyIndex.getAllKeys(plantId);
-        historyReq.onsuccess = () => historyReq.result.forEach(key => tx.objectStore('aiHistory').delete(key));
-
-        await promisifyTransaction(tx);
-    },
-
-    addPhoto: async (plantId: string, url: string, notes?: string): Promise<Photo> => {
-        const db = await getDb();
-        const tx = db.transaction('photos', 'readwrite');
-        const newPhoto: Photo = {
-            id: `photo_${Date.now()}`,
-            plantId,
-            url,
-            notes,
-            takenAt: new Date().toISOString(),
-        };
-        await promisifyRequest(tx.objectStore('photos').add(newPhoto));
-        return newPhoto;
-    },
-  
-    addTask: async (plantId: string, taskData: Omit<Task, 'id' | 'plantId' | 'completedAt'>): Promise<Task> => {
-        const db = await getDb();
-        const tx = db.transaction('tasks', 'readwrite');
-        const newTask: Task = {
-            id: `task_${Date.now()}`,
-            plantId,
-            ...taskData
-        };
-        await promisifyRequest(tx.objectStore('tasks').add(newTask));
-        return newTask;
-    },
-  
-    markTaskComplete: async (taskId: string): Promise<{ updatedTask: Task; newTask?: Task }> => {
-        const db = await getDb();
-        const tx = db.transaction('tasks', 'readwrite');
-        const store = tx.objectStore('tasks');
-        const task = await promisifyRequest(store.get(taskId));
-
-        if (!task) {
-          throw new Error("Task not found.");
-        }
-        
-        if (task.completedAt) {
-            console.warn(`Task ${taskId} was already completed. Ignoring.`);
-            return { updatedTask: task };
-        }
-
-        const now = new Date();
-        const updatedTask: Task = { ...task, completedAt: now.toISOString() };
-        store.put(updatedTask);
-
-        let newTask: Task | undefined = undefined;
-        const RECURRENCE_DAYS: Partial<Record<Task['type'], number>> = {
-          water: 7,
-          fertilize: 30,
-        };
-
-        const recurrenceDays = RECURRENCE_DAYS[task.type];
-
-        if (recurrenceDays) {
-          const newNextRunAt = new Date(now.getTime() + recurrenceDays * 24 * 60 * 60 * 1000);
-
-          newTask = {
-            id: `task_${Date.now()}_${Math.random()}`,
-            plantId: task.plantId,
-            type: task.type,
-            title: task.title,
-            notes: task.notes,
-            nextRunAt: newNextRunAt.toISOString(),
-          };
-          store.add(newTask);
-        }
-
-        await promisifyTransaction(tx);
-        return { updatedTask, newTask };
-    },
-
-    addAIHistory: async (data: Omit<AIHistory, 'id'>): Promise<AIHistory> => {
-        const db = await getDb();
-        const tx = db.transaction('aiHistory', 'readwrite');
-        const newHistory: AIHistory = {
-            id: `ai_${Date.now()}`,
-            ...data,
-        };
-        await promisifyRequest(tx.objectStore('aiHistory').add(newHistory));
-        await promisifyTransaction(tx);
-        return newHistory;
-    },
-
-    // --- Category Methods ---
-    getCategories: async (): Promise<Category[]> => {
-        const db = await getDb();
-        const tx = db.transaction('categories', 'readonly');
-        const store = tx.objectStore('categories');
-        const categories = await promisifyRequest(store.getAll());
-        return categories.sort((a, b) => a.name.localeCompare(b.name));
     },
 
     addCategory: async (name: string): Promise<Category> => {
-        const db = await getDb();
-        const tx = db.transaction('categories', 'readwrite');
-        const newCategory: Category = {
-            id: `cat_${Date.now()}`,
-            name,
-            createdAt: new Date().toISOString(),
-        };
-        await promisifyRequest(tx.objectStore('categories').add(newCategory));
+        const newCategory: Category = { id: uuidv4(), name, createdAt: new Date().toISOString() };
+        const db = await dbPromise;
+        await promisifyRequest(db.transaction('categories', 'readwrite').objectStore('categories').add(newCategory));
         return newCategory;
     },
 
-    deleteCategory: async (categoryId: string): Promise<void> => {
-        const db = await getDb();
+    deleteCategory: async (id: string): Promise<void> => {
+        const db = await dbPromise;
         const tx = db.transaction(['categories', 'plants'], 'readwrite');
-        
-        tx.objectStore('categories').delete(categoryId);
+        tx.objectStore('categories').delete(id);
 
         const plantStore = tx.objectStore('plants');
-        const cursorReq = plantStore.openCursor();
+        plantStore.openCursor().onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+            if (cursor) {
+                if (cursor.value.categoryId === id) {
+                    const updatedPlant = { ...cursor.value, categoryId: undefined };
+                    cursor.update(updatedPlant);
+                }
+                cursor.continue();
+            }
+        };
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+
+    addPhoto: async (plantId: string, url: string): Promise<Photo> => {
+        const newPhoto: Photo = { id: uuidv4(), plantId, url, takenAt: new Date().toISOString() };
+        const db = await dbPromise;
+        await promisifyRequest(db.transaction('photos', 'readwrite').objectStore('photos').add(newPhoto));
+        return newPhoto;
+    },
+    
+    addAIHistory: async (item: Omit<AIHistory, 'id'>): Promise<AIHistory> => {
+        const newItem: AIHistory = { ...item, id: uuidv4() };
+        const db = await dbPromise;
+        await promisifyRequest(db.transaction('aiHistory', 'readwrite').objectStore('aiHistory').add(newItem));
+        return newItem;
+    },
+    
+    markTaskComplete: async (taskId: string): Promise<{ updatedTask: Task; newTask: Task | null; }> => {
+        const db = await dbPromise;
+        const tx = db.transaction(['tasks'], 'readwrite');
+        const store = tx.objectStore('tasks');
+        const task = await promisifyRequest(store.get(taskId)) as Task;
+        if (!task) throw new Error("Task not found");
+
+        const updatedTask = { ...task, completedAt: new Date().toISOString() };
+        store.put(updatedTask);
+
+        let newTask: Task | null = null;
+        const frequency = parseFrequency(task.notes || "");
+        if (frequency > 0) {
+            const nextRunAt = new Date();
+            nextRunAt.setDate(nextRunAt.getDate() + frequency);
+            newTask = { ...task, id: uuidv4(), nextRunAt: nextRunAt.toISOString(), completedAt: undefined };
+            store.add(newTask);
+        }
+
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve({ updatedTask, newTask });
+            tx.onerror = () => reject(tx.error);
+        });
+    },
+
+    deletePlant: async (plantId: string): Promise<void> => {
+        const db = await dbPromise;
+        const tx = db.transaction(STORES, 'readwrite');
+        tx.objectStore('plants').delete(plantId);
+        tx.objectStore('careProfiles').delete(plantId);
         
-        await new Promise((resolve, reject) => {
-            cursorReq.onsuccess = () => {
-                const cursor = cursorReq.result;
+        const deleteFromStore = (store: IDBObjectStore) => {
+            store.openCursor().onsuccess = (event) => {
+                const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
                 if (cursor) {
-                    if (cursor.value.categoryId === categoryId) {
-                        const updateData = cursor.value;
-                        delete updateData.categoryId;
-                        cursor.update(updateData);
-                    }
+                    if (cursor.value.plantId === plantId) cursor.delete();
                     cursor.continue();
-                } else {
-                    resolve(void 0);
                 }
             };
-            cursorReq.onerror = () => reject(cursorReq.error);
+        };
+        deleteFromStore(tx.objectStore('photos'));
+        deleteFromStore(tx.objectStore('tasks'));
+        deleteFromStore(tx.objectStore('aiHistory'));
+        
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
         });
-
-        await promisifyTransaction(tx);
     },
 
     clearAllData: async (): Promise<void> => {
-        const db = await getDb();
+        const db = await dbPromise;
         const tx = db.transaction(STORES, 'readwrite');
-        for (const storeName of STORES) {
-            tx.objectStore(storeName).clear();
-        }
-        await promisifyTransaction(tx);
+        STORES.forEach(storeName => tx.objectStore(storeName).clear());
+        return new Promise((resolve, reject) => {
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+        });
     },
-
-    getSetting: async <T>(key: string): Promise<T | undefined> => {
-        const db = await getDb();
-        const tx = db.transaction('settings', 'readonly');
-        const store = tx.objectStore('settings');
-        const result = await promisifyRequest(store.get(key));
-        return result ? result.value : undefined;
-    },
-
-    setSetting: async <T>(key: string, value: T): Promise<void> => {
-        const db = await getDb();
-        const tx = db.transaction('settings', 'readwrite');
-        const store = tx.objectStore('settings');
-        await promisifyRequest(store.put({ key, value }));
-        await promisifyTransaction(tx);
-    }
 };
+
+interface PlantDetailsData {
+  plant: Plant;
+  careProfile: CareProfile | null;
+  photos: Photo[];
+  tasks: Task[];
+  history: AIHistory[];
+}

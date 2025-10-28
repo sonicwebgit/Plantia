@@ -184,7 +184,8 @@ export const Analytics = () => {
                     <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-3">Plants by Location</h2>
                     <Card>
                         <div className="divide-y divide-slate-200 dark:divide-slate-800">
-                            {Object.entries(plantsByLocation).sort(([, a], [, b]) => b - a).map(([location, count]) => (
+                            {/* FIX: Explicitly cast sorting values to Number to satisfy TypeScript's strict arithmetic operation rules. */}
+                            {Object.entries(plantsByLocation).sort(([, a], [, b]) => Number(b) - Number(a)).map(([location, count]) => (
                                 <div key={location} className="p-4 flex justify-between items-center">
                                     <span className="font-medium text-slate-700 dark:text-slate-300">{location}</span>
                                     <span className="font-bold text-lg text-emerald-600 dark:text-emerald-400">{count}</span>

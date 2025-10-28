@@ -18,7 +18,8 @@ interface PlantTaskData {
   tasks: Task[]; // Only incomplete tasks
 }
 
-const PlantTaskCard = ({ data, onCompleteTask }: { data: PlantTaskData, onCompleteTask: (taskId: string) => void }) => {
+// FIX: Explicitly type PlantTaskCard as a React.FC to handle the 'key' prop correctly in lists.
+const PlantTaskCard: React.FC<{ data: PlantTaskData, onCompleteTask: (taskId: string) => void }> = ({ data, onCompleteTask }) => {
     const { plant, status, tasks } = data;
     const styles = statusStyles[status];
 

@@ -133,7 +133,8 @@ const TaskList = ({ initialTasks, plantId, onTasksUpdated }: { initialTasks: Tas
     );
 };
 
-const HistoryItem = ({ item }: { item: AIHistory }) => {
+// FIX: Explicitly type HistoryItem as a React.FC to handle the 'key' prop correctly in lists.
+const HistoryItem: React.FC<{ item: AIHistory }> = ({ item }) => {
     return (
         <details className="group overflow-hidden rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 open:shadow-md transition-shadow">
             <summary className="p-4 flex justify-between items-center cursor-pointer list-none">

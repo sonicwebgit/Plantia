@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { adaptiveDb as db } from '../services/adaptiveApi';
+import { db } from '../services/api';
 import type { Plant, Category } from '../types';
 import { Card, Spinner, Button, Badge } from './ui';
 
-const PlantCard = ({ plant, categoryName }: { plant: Plant, categoryName?: string }) => {
+// FIX: Explicitly type PlantCard as a React.FC to handle the 'key' prop correctly in lists.
+const PlantCard: React.FC<{ plant: Plant, categoryName?: string }> = ({ plant, categoryName }) => {
     return (
         <a href={`#/plant/${plant.id}`}>
             <Card className="h-full transform transition-all duration-300 hover:-translate-y-1 hover:shadow-lg dark:bg-slate-800">
@@ -122,7 +123,8 @@ export const Dashboard = () => {
     }
   };
 
-  const FilterButton = ({ filterId, label }: { filterId: string, label: string }) => {
+  // FIX: Explicitly type FilterButton as a React.FC to handle the 'key' prop correctly in lists.
+  const FilterButton: React.FC<{ filterId: string, label: string }> = ({ filterId, label }) => {
     const isActive = activeFilter === filterId;
     return (
         <button

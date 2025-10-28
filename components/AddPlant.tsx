@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { geminiService } from '../services/api';
-import { adaptiveDb as db } from '../services/adaptiveApi';
+import { geminiService, db } from '../services/api';
 import type { PlantIdentificationResult, Category } from '../types';
 import { fileToBase64, resizeImage } from '../utils/helpers';
 import { Card, Button, Spinner } from './ui';

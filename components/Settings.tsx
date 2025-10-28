@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../services/api';
+import { auth } from '../services/firebase';
 import { Card, Button } from './ui';
-import { useAuth } from '../contexts/AuthContext';
+import type { User } from '../types';
 
 type Theme = 'light' | 'dark' | 'system';
 type PermissionState = 'prompt' | 'granted' | 'denied';
@@ -29,15 +30,13 @@ const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean, onCha
 );
 
 
-export const Settings = () => {
-    const { user, logout } = useAuth();
+export const Settings = ({ user }: { user: User }) => {
     const [theme, setTheme] = useState<Theme>('system');
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
     const [notifPermission, setNotifPermission] = useState<PermissionState>('prompt');
     const [syncSupported, setSyncSupported] = useState(false);
 
     useEffect(() => {
-        // Load settings from localStorage
         try {
             const storedTheme = localStorage.getItem('plantia_theme') as Theme | null;
             if (storedTheme) setTheme(storedTheme);
@@ -52,10 +51,9 @@ export const Settings = () => {
             window.isSecureContext &&
             window.top === window;
 
-        // Check feature support and permissions
         const checkSupportAndPermissions = async () => {
              if (!canUseNotifications) {
-                setNotifPermission('denied'); // Treat unsupported env as 'denied' for UI purposes
+                setNotifPermission('denied');
                 setSyncSupported(false);
                 return;
             }
@@ -78,7 +76,6 @@ export const Settings = () => {
 
         checkSupportAndPermissions();
         
-        // Listen for external permission changes
         if (canUseNotifications && navigator.permissions?.query) {
              navigator.permissions.query({ name: 'notifications' }).then(status => {
                 status.onchange = () => {
@@ -123,13 +120,13 @@ export const Settings = () => {
             try {
                 const requestedPermission = await Notification.requestPermission();
                 const permission = requestedPermission === 'default' ? 'prompt' : requestedPermission;
-                setNotifPermission(permission); // Always update the permission state display
+                setNotifPermission(permission);
 
                 if (permission !== 'granted') {
                     if (permission === 'denied') {
                         alert("Notifications are blocked. Please enable them in your browser's site settings.");
                     }
-                    return; // Stop if permission is not granted
+                    return;
                 }
                 
                 const registration = await navigator.serviceWorker.ready;
@@ -143,7 +140,6 @@ export const Settings = () => {
                     }
                 }
 
-                // ONLY set as enabled if permission was granted.
                 localStorage.setItem('plantia_notifications_enabled', 'true');
                 setNotificationsEnabled(true);
             } catch (e) {
@@ -151,7 +147,6 @@ export const Settings = () => {
                 alert("An unexpected error occurred while enabling notifications.");
             }
         } else {
-            // Disabling
             localStorage.setItem('plantia_notifications_enabled', 'false');
             setNotificationsEnabled(false);
             try {
@@ -165,22 +160,23 @@ export const Settings = () => {
         }
     };
 
-
     const handleClearData = async () => {
-        const isConfirmed = window.confirm("Are you sure you want to delete all your plant data? This action cannot be undone.");
+        const isConfirmed = window.confirm("Are you sure you want to delete all your plant data from the cloud? This action cannot be undone.");
         if (isConfirmed) {
-            await db.clearAllData();
-            alert("All data has been cleared.");
-            window.location.hash = '#/';
-            window.location.reload(); // Force a reload to clear state
+            try {
+                await db.clearAllData();
+                alert("All data has been cleared.");
+                window.location.hash = '#/';
+                window.location.reload();
+            } catch (error) {
+                console.error("Error clearing data:", error);
+                alert("Failed to clear data. Please try again.");
+            }
         }
     };
-
-    const handleLogout = async () => {
-        const isConfirmed = window.confirm("Are you sure you want to sign out?");
-        if (isConfirmed) {
-            await logout();
-        }
+    
+    const handleLogout = () => {
+        auth.signOut();
     };
 
     const getButtonClass = (isActive: boolean) => {
@@ -215,35 +211,15 @@ export const Settings = () => {
             <Card>
                 <div className="p-6">
                     <h2 className="text-lg font-semibold mb-4">Account</h2>
-                    <div className="space-y-4">
-                        <div className="flex items-center space-x-4">
-                            {user?.image ? (
-                                <img 
-                                    src={user.image} 
-                                    alt="Profile" 
-                                    className="w-12 h-12 rounded-full"
-                                />
-                            ) : (
-                                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
-                                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold text-lg">
-                                        {user?.name?.charAt(0).toUpperCase() || user?.email?.charAt(0).toUpperCase()}
-                                    </span>
-                                </div>
-                            )}
-                            <div>
-                                <p className="font-medium text-slate-900 dark:text-white">{user?.name}</p>
-                                <p className="text-sm text-slate-500 dark:text-slate-400">{user?.email}</p>
-                            </div>
+                    <div className="flex items-center">
+                        {user.photoURL && <img src={user.photoURL} alt="User profile" className="h-14 w-14 rounded-full" />}
+                        <div className="ml-4">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">{user.displayName}</div>
+                            <div className="text-sm text-slate-500 dark:text-slate-400">{user.email}</div>
                         </div>
-                        <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
-                            <Button 
-                                variant="secondary" 
-                                onClick={handleLogout}
-                                className="w-full sm:w-auto"
-                            >
-                                Sign Out
-                            </Button>
-                        </div>
+                         <Button variant="secondary" onClick={handleLogout} className="ml-auto">
+                            Logout
+                        </Button>
                     </div>
                 </div>
             </Card>
@@ -251,21 +227,19 @@ export const Settings = () => {
             <Card>
                 <div className="p-6">
                     <h2 className="text-lg font-semibold mb-3">Appearance</h2>
-                    <div className="space-y-4">
-                        <div>
-                          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Theme</label>
-                          <div className="mt-2 flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
-                              <button onClick={() => handleThemeChange('light')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'light')}`}>
-                                  Light
-                              </button>
-                               <button onClick={() => handleThemeChange('dark')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'dark')}`}>
-                                  Dark
-                              </button>
-                               <button onClick={() => handleThemeChange('system')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'system')}`}>
-                                  System
-                              </button>
-                          </div>
-                        </div>
+                    <div>
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Theme</label>
+                      <div className="mt-2 flex space-x-2 rounded-lg bg-slate-100 dark:bg-slate-900 p-1">
+                          <button onClick={() => handleThemeChange('light')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'light')}`}>
+                              Light
+                          </button>
+                           <button onClick={() => handleThemeChange('dark')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'dark')}`}>
+                              Dark
+                          </button>
+                           <button onClick={() => handleThemeChange('system')} className={`w-full rounded-md py-1.5 text-sm font-semibold transition-colors ${getButtonClass(theme === 'system')}`}>
+                              System
+                          </button>
+                      </div>
                     </div>
                 </div>
             </Card>
@@ -295,7 +269,7 @@ export const Settings = () => {
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="font-medium">Clear All Data</p>
-                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Permanently delete your entire plant collection, including all photos and tasks.</p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Permanently delete your entire plant collection from the cloud.</p>
                         </div>
                         <Button variant="danger" onClick={handleClearData} className="mt-4 sm:mt-0 sm:ml-4 flex-shrink-0">
                             Delete All Data

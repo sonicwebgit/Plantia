@@ -1,6 +1,7 @@
 import React from 'react';
 
-const NavLink = ({ href, currentRoute, children }: { href: string; currentRoute: string; children: React.ReactNode }) => {
+// FIX: Explicitly type NavLink as a React Function Component to resolve type inference issues with children.
+const NavLink: React.FC<{ href: string; currentRoute: string; children: React.ReactNode }> = ({ href, currentRoute, children }) => {
   const isActive = currentRoute === href || (href === '#/' && currentRoute === '');
   const activeClass = 'text-emerald-600 dark:text-emerald-400';
   const inactiveClass = 'text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-500';
@@ -62,7 +63,8 @@ interface CardProps {
   className?: string;
 }
 
-export const Card = ({ children, className = '' }: CardProps) => (
+// FIX: Explicitly type Card as a React Function Component to resolve type inference issues with children.
+export const Card: React.FC<CardProps> = ({ children, className = '' }) => (
   <div className={`overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 shadow-sm ${className}`}>
     {children}
   </div>
@@ -96,7 +98,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(({ classN
 });
 
 
-export const Badge = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
+// FIX: Explicitly type Badge as a React Function Component to resolve type inference issues with children.
+export const Badge: React.FC<{ children: React.ReactNode, className?: string }> = ({ children, className = '' }) => (
   <span className={`inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-900 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:text-emerald-300 ${className}`}>
     {children}
   </span>
