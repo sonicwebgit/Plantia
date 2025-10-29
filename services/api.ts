@@ -1,29 +1,30 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import type { Plant, CareProfile, Photo, Task, AIHistory, Category, PlantIdentificationResult, StoredData } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { getFirestoreDB, getAuth } from './firebase';
+import {
+    collection, query, where, getDocs, getDoc, doc, addDoc, deleteDoc, writeBatch, serverTimestamp,
+    Timestamp, orderBy, updateDoc, deleteField, DocumentSnapshot
+} from 'firebase/firestore';
+import type { Plant, CareProfile, Photo, Task, AIHistory, Category, PlantIdentificationResult, StoredData } from '../types';
 
-// --- Gemini AI Service ---
 
-// FIX: Per Gemini API guidelines, the API key must be obtained from an environment variable.
-// For Vite projects, this is done via `import.meta.env`.
-const apiKey = import.meta.env.VITE_API_KEY;
-if (!apiKey) {
-    // This provides a clear, developer-friendly error if the VITE_API_KEY is missing.
-    const rootEl = document.getElementById('root');
-    if (rootEl) {
-        rootEl.innerHTML = `
-            <div style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #fff5f5; color: #c53030; border: 1px solid #fc8181; border-radius: 0.5rem; margin: 2rem;">
-                <h1 style="font-size: 1.5rem; font-weight: bold;">Gemini API Key Error</h1>
-                <p>The Gemini API key is missing. Please ensure the <code>VITE_API_KEY</code> environment variable is configured for your deployment.</p>
-                <p style="font-size: 0.8rem; margin-top: 1rem;">This is a developer message. The app will not function correctly until this is resolved.</p>
-            </div>
-        `;
+// --- Gemini AI Service (No Changes) ---
+
+let ai: GoogleGenAI | null = null;
+
+function getAiInstance(): GoogleGenAI {
+    if (ai) {
+        return ai;
     }
-    throw new Error("Gemini API key is missing. Please ensure VITE_API_KEY is configured.");
-}
-const ai = new GoogleGenAI({ apiKey });
 
-// FIX: Export `geminiService` to make it available for use in other modules.
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("Gemini API key is missing. Please ensure the API_KEY environment variable is configured for your deployment.");
+    }
+    ai = new GoogleGenAI({ apiKey });
+    return ai;
+}
+
 export const geminiService = {
   identifyPlant: async (base64Image: string): Promise<PlantIdentificationResult> => {
     const model = 'gemini-2.5-flash';
@@ -67,7 +68,7 @@ export const geminiService = {
     };
 
     try {
-      const response: GenerateContentResponse = await ai.models.generateContent({
+      const response: GenerateContentResponse = await getAiInstance().models.generateContent({
         model,
         contents: {
           parts: [
@@ -88,7 +89,7 @@ export const geminiService = {
       return JSON.parse(text);
     } catch (error) {
       console.error("Gemini Identification Error:", error);
-      throw new Error("An unexpected error occurred during plant identification.");
+      throw new Error(error instanceof Error ? error.message : "An unexpected error occurred during plant identification.");
     }
   },
 
@@ -113,7 +114,7 @@ export const geminiService = {
     }
 
     try {
-        const response = await ai.models.generateContent({
+        const response = await getAiInstance().models.generateContent({
             model,
             contents: { parts: parts }
         });
@@ -125,38 +126,12 @@ export const geminiService = {
         return text;
     } catch (error) {
         console.error("Gemini Ask Error:", error);
-        throw new Error("An unexpected error occurred while asking the AI.");
+        throw new Error(error instanceof Error ? error.message : "An unexpected error occurred while asking the AI.");
     }
   }
 };
 
-
-// --- IndexedDB Service ---
-
-const DB_NAME = 'PlantiaDB';
-const DB_VERSION = 1;
-const STORES: (keyof StoredData)[] = ['plants', 'careProfiles', 'photos', 'tasks', 'aiHistory', 'categories'];
-
-const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        STORES.forEach(storeName => {
-            if (!db.objectStoreNames.contains(storeName)) {
-                db.createObjectStore(storeName, { keyPath: 'id' });
-            }
-        });
-    };
-});
-
-function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-    });
-}
+// --- Utilities ---
 
 function parseFrequency(instruction: string): number {
     let days = 0;
@@ -179,13 +154,12 @@ function parseFrequency(instruction: string): number {
     return days;
 }
 
-function createTaskFromProfile(plantId: string, type: 'water' | 'fertilize', title: string, instruction: string): Task | null {
+function createTaskFromProfile(plantId: string, type: 'water' | 'fertilize', title: string, instruction: string): Omit<Task, 'id'> | null {
     const days = parseFrequency(instruction);
     if (days > 0) {
         const nextRunAt = new Date();
         nextRunAt.setDate(nextRunAt.getDate() + days);
         return {
-            id: uuidv4(),
             plantId,
             type,
             title,
@@ -196,7 +170,265 @@ function createTaskFromProfile(plantId: string, type: 'water' | 'fertilize', tit
     return null;
 }
 
-export const db = {
+// --- Firestore Service ---
+
+const STORES: (keyof StoredData)[] = ['plants', 'careProfiles', 'photos', 'tasks', 'aiHistory', 'categories'];
+
+const getCurrentUserId = (): string => {
+    const user = getAuth().currentUser;
+    if (!user) {
+        throw new Error("User not authenticated. Cannot perform database operation.");
+    }
+    return user.uid;
+};
+
+function dataFromSnapshot<T>(doc: DocumentSnapshot): T {
+    const data = doc.data() as any;
+    for (const key in data) {
+        if (data[key] instanceof Timestamp) {
+            data[key] = data[key].toDate().toISOString();
+        }
+    }
+    return { ...data, id: doc.id } as T;
+}
+
+const firestoreService = {
+    getPlants: async (): Promise<Plant[]> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/plants`), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => dataFromSnapshot<Plant>(doc));
+    },
+    getCategories: async (): Promise<Category[]> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/categories`), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => dataFromSnapshot<Category>(doc));
+    },
+    getPhotos: async (): Promise<Photo[]> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/photos`));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => dataFromSnapshot<Photo>(doc));
+    },
+    getTasks: async (): Promise<Task[]> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/tasks`));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => dataFromSnapshot<Task>(doc));
+    },
+
+    getPlantDetails: async (plantId: string): Promise<PlantDetailsData | null> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+
+        const plantRef = doc(db, `users/${uid}/plants/${plantId}`);
+        const plantSnap = await getDoc(plantRef);
+        if (!plantSnap.exists()) return null;
+
+        const plant = dataFromSnapshot<Plant>(plantSnap);
+
+        const careProfileRef = doc(db, `users/${uid}/careProfiles/${plantId}`);
+        const careProfileSnap = await getDoc(careProfileRef);
+        const careProfile = careProfileSnap.exists() ? dataFromSnapshot<CareProfile>(careProfileSnap) : null;
+
+        const baseQuery = (collectionName: string) => query(collection(db, `users/${uid}/${collectionName}`), where('plantId', '==', plantId));
+
+        const photosSnap = await getDocs(query(baseQuery('photos'), orderBy('takenAt', 'desc')));
+        const tasksSnap = await getDocs(baseQuery('tasks'));
+        const historySnap = await getDocs(query(baseQuery('aiHistory'), orderBy('createdAt', 'desc')));
+
+        return {
+            plant,
+            careProfile,
+            photos: photosSnap.docs.map(d => dataFromSnapshot<Photo>(d)),
+            tasks: tasksSnap.docs.map(d => dataFromSnapshot<Task>(d)),
+            history: historySnap.docs.map(d => dataFromSnapshot<AIHistory>(d)),
+        };
+    },
+
+    addPlant: async (data: { identification: PlantIdentificationResult; nickname: string; initialPhotoUrl: string | null; categoryId?: string; }): Promise<Plant> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const batch = writeBatch(db);
+
+        const plantRef = doc(collection(db, `users/${uid}/plants`));
+        const plantId = plantRef.id;
+
+        const newPlant: Omit<Plant, 'id'> = {
+            species: data.identification.species,
+            commonName: data.identification.commonName,
+            confidence: data.identification.confidence,
+            nickname: data.nickname,
+            categoryId: data.categoryId,
+            createdAt: serverTimestamp() as any, // Firestore will convert this
+            photoUrl: data.initialPhotoUrl || undefined,
+        };
+        batch.set(plantRef, newPlant);
+        
+        const newCareProfile: Omit<CareProfile, 'id'> = { plantId, species: data.identification.species, ...data.identification.careProfile };
+        batch.set(doc(db, `users/${uid}/careProfiles/${plantId}`), newCareProfile);
+
+        if (data.initialPhotoUrl) {
+            const newPhoto: Omit<Photo, 'id'> = { plantId, url: data.initialPhotoUrl, takenAt: serverTimestamp() as any };
+            batch.set(doc(collection(db, `users/${uid}/photos`)), newPhoto);
+        }
+        
+        const wateringTask = createTaskFromProfile(plantId, 'water', 'Water Plant', data.identification.careProfile.watering);
+        if(wateringTask) batch.set(doc(collection(db, `users/${uid}/tasks`)), wateringTask);
+
+        const fertilizerTask = createTaskFromProfile(plantId, 'fertilize', 'Fertilize Plant', data.identification.careProfile.fertilizer);
+        if(fertilizerTask) batch.set(doc(collection(db, `users/${uid}/tasks`)), fertilizerTask);
+        
+        await batch.commit();
+
+        return { ...newPlant, id: plantId, createdAt: new Date().toISOString() };
+    },
+
+    addCategory: async (name: string): Promise<Category> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const newCategory: Omit<Category, 'id'> = { name, createdAt: serverTimestamp() as any };
+        const docRef = await addDoc(collection(db, `users/${uid}/categories`), newCategory);
+        return { ...newCategory, id: docRef.id, createdAt: new Date().toISOString() };
+    },
+
+    deleteCategory: async (id: string): Promise<void> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const batch = writeBatch(db);
+        
+        batch.delete(doc(db, `users/${uid}/categories/${id}`));
+
+        const q = query(collection(db, `users/${uid}/plants`), where('categoryId', '==', id));
+        const plantsToUpdate = await getDocs(q);
+        plantsToUpdate.forEach(plantDoc => {
+            batch.update(plantDoc.ref, { categoryId: deleteField() });
+        });
+        
+        await batch.commit();
+    },
+
+    addPhoto: async (plantId: string, url: string): Promise<Photo> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const newPhoto: Omit<Photo, 'id'> = { plantId, url, takenAt: serverTimestamp() as any };
+        const docRef = await addDoc(collection(db, `users/${uid}/photos`), newPhoto);
+        return { ...newPhoto, id: docRef.id, takenAt: new Date().toISOString() };
+    },
+    
+    addAIHistory: async (item: Omit<AIHistory, 'id'>): Promise<AIHistory> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const newItem: Omit<AIHistory, 'id'> = { ...item, createdAt: serverTimestamp() as any };
+        const docRef = await addDoc(collection(db, `users/${uid}/aiHistory`), newItem);
+        return { ...item, id: docRef.id, createdAt: new Date().toISOString() };
+    },
+    
+    markTaskComplete: async (taskId: string): Promise<{ updatedTask: Task; newTask: Task | null; }> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const batch = writeBatch(db);
+        
+        const taskRef = doc(db, `users/${uid}/tasks/${taskId}`);
+        const taskSnap = await getDoc(taskRef);
+        if (!taskSnap.exists()) throw new Error("Task not found");
+
+        const task = dataFromSnapshot<Task>(taskSnap);
+        const updatedTask = { ...task, completedAt: new Date().toISOString() };
+        batch.update(taskRef, { completedAt: updatedTask.completedAt });
+
+        let newTask: Task | null = null;
+        const frequency = parseFrequency(task.notes || "");
+        if (frequency > 0) {
+            const nextRunAt = new Date();
+            nextRunAt.setDate(nextRunAt.getDate() + frequency);
+            const newTaskData = { ...task, nextRunAt: nextRunAt.toISOString(), completedAt: undefined };
+            delete (newTaskData as Partial<Task>).id;
+            
+            const newTaskRef = doc(collection(db, `users/${uid}/tasks`));
+            batch.set(newTaskRef, newTaskData);
+            newTask = { ...newTaskData, id: newTaskRef.id };
+        }
+        
+        await batch.commit();
+        return { updatedTask, newTask };
+    },
+
+    deletePlant: async (plantId: string): Promise<void> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const batch = writeBatch(db);
+
+        // Delete main plant and care profile docs
+        batch.delete(doc(db, `users/${uid}/plants/${plantId}`));
+        batch.delete(doc(db, `users/${uid}/careProfiles/${plantId}`));
+
+        // Query and delete all related sub-collection documents
+        const collectionsToDelete = ['photos', 'tasks', 'aiHistory'];
+        for (const coll of collectionsToDelete) {
+            const q = query(collection(db, `users/${uid}/${coll}`), where('plantId', '==', plantId));
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => batch.delete(doc.ref));
+        }
+
+        await batch.commit();
+    },
+
+    clearAllData: async (): Promise<void> => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+
+        // This is a simplified version. For large collections, this should be done
+        // in a Cloud Function to avoid client-side timeouts.
+        for (const storeName of STORES) {
+            const batch = writeBatch(db);
+            const q = query(collection(db, `users/${uid}/${storeName}`));
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+        }
+    },
+};
+
+// --- IndexedDB Service (For Preview/Offline Fallback) ---
+
+const DB_NAME = 'PlantiaDB';
+const DB_VERSION = 1;
+
+const dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    // Check if indexedDB is available before trying to open it.
+    if (!('indexedDB' in window)) {
+      console.warn('IndexedDB not supported, preview mode data will not be persisted.');
+      // We don't reject here, we just won't be able to use the DB.
+      // Operations will fail gracefully later.
+      return;
+    }
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        STORES.forEach(storeName => {
+            if (!db.objectStoreNames.contains(storeName)) {
+                db.createObjectStore(storeName, { keyPath: 'id' });
+            }
+        });
+    };
+});
+
+function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+const indexedDbService = {
     getPlants: async (): Promise<Plant[]> => {
         const db = await dbPromise;
         return promisifyRequest(db.transaction('plants').objectStore('plants').getAll());
@@ -255,11 +487,11 @@ export const db = {
             tx.objectStore('photos').add(newPhoto);
         }
         
-        const wateringTask = createTaskFromProfile(plantId, 'water', 'Water Plant', data.identification.careProfile.watering);
-        if(wateringTask) tx.objectStore('tasks').add(wateringTask);
+        const wateringTaskData = createTaskFromProfile(plantId, 'water', 'Water Plant', data.identification.careProfile.watering);
+        if(wateringTaskData) tx.objectStore('tasks').add({...wateringTaskData, id: uuidv4()});
 
-        const fertilizerTask = createTaskFromProfile(plantId, 'fertilize', 'Fertilize Plant', data.identification.careProfile.fertilizer);
-        if(fertilizerTask) tx.objectStore('tasks').add(fertilizerTask);
+        const fertilizerTaskData = createTaskFromProfile(plantId, 'fertilize', 'Fertilize Plant', data.identification.careProfile.fertilizer);
+        if(fertilizerTaskData) tx.objectStore('tasks').add({...fertilizerTaskData, id: uuidv4()});
         
         return new Promise((resolve, reject) => {
             tx.oncomplete = () => resolve(newPlant);
@@ -304,7 +536,7 @@ export const db = {
     },
     
     addAIHistory: async (item: Omit<AIHistory, 'id'>): Promise<AIHistory> => {
-        const newItem: AIHistory = { ...item, id: uuidv4() };
+        const newItem: AIHistory = { ...item, id: uuidv4(), createdAt: new Date().toISOString() };
         const db = await dbPromise;
         await promisifyRequest(db.transaction('aiHistory', 'readwrite').objectStore('aiHistory').add(newItem));
         return newItem;
@@ -378,3 +610,7 @@ interface PlantDetailsData {
   tasks: Task[];
   history: AIHistory[];
 }
+
+const isInPreview = window.top !== window;
+
+export const db = isInPreview ? indexedDbService : firestoreService;

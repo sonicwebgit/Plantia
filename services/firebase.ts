@@ -1,40 +1,68 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getAuth as getFirebaseAuth, Auth } from 'firebase/auth';
+import { getFirestore, initializeFirestore, enableIndexedDbPersistence, Firestore } from 'firebase/firestore';
+
 
 const firebaseConfig = {
-  // Use import.meta.env for Vite projects to securely load environment variables
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  // Use process.env to securely load environment variables, ensuring compatibility with standard deployment platforms.
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
 };
 
-// Validate that the essential Firebase config keys are present.
-// This provides a clear, developer-friendly error if the .env file is missing or misconfigured.
-if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
-    const rootEl = document.getElementById('root');
-    if (rootEl) {
-        rootEl.innerHTML = `
-            <div style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #fff5f5; color: #c53030; border: 1px solid #fc8181; border-radius: 0.5rem; margin: 2rem;">
-                <h1 style="font-size: 1.5rem; font-weight: bold;">Firebase Configuration Error</h1>
-                <p>Firebase environment variables are missing. Please ensure you have a <code>.env</code> file with the correct VITE_FIREBASE_* keys and have restarted the development server.</p>
-                <p style="font-size: 0.8rem; margin-top: 1rem;">This is a developer message. The app will not function correctly until this is resolved.</p>
-            </div>
-        `;
+let appInitialized = false;
+let authInstance: Auth | null = null;
+let firestoreInstance: Firestore | null = null;
+
+function initializeFirebase() {
+    if (appInitialized) return;
+
+    if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+        throw new Error("Firebase environment variables are missing. Please ensure you have the correct FIREBASE_* keys configured for your deployment.");
     }
-    // Prevent the app from initializing further by throwing an error.
-    throw new Error("Firebase configuration variables are missing. See the message in the UI.");
+
+    const app = initializeApp(firebaseConfig);
+    authInstance = getFirebaseAuth(app);
+    firestoreInstance = getFirestore(app);
+    
+    try {
+        enableIndexedDbPersistence(firestoreInstance)
+            .catch((err) => {
+                if (err.code === 'failed-precondition') {
+                    console.warn("Firestore persistence failed: Multiple tabs open.");
+                } else if (err.code === 'unimplemented') {
+                    console.warn("Firestore persistence not available in this browser.");
+                }
+            });
+    } catch (error) {
+        console.error("Error enabling Firestore persistence:", error);
+    }
+    
+    appInitialized = true;
 }
 
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+/**
+ * Initializes Firebase and returns the Auth instance.
+ * Uses a singleton pattern to ensure it only runs once.
+ * @throws {Error} If Firebase configuration variables are missing.
+ * @returns {Auth} The Firebase Auth instance.
+ */
+export const getAuth = (): Auth => {
+    initializeFirebase();
+    if (!authInstance) throw new Error("Firebase Auth not initialized");
+    return authInstance;
+};
 
-// Export services for use in other parts of the application
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+/**
+ * Initializes Firebase and returns the Firestore instance.
+ * @returns {Firestore} The Firebase Firestore instance.
+ */
+export const getFirestoreDB = (): Firestore => {
+    initializeFirebase();
+    if (!firestoreInstance) throw new Error("Firebase Firestore not initialized");
+    return firestoreInstance;
+}

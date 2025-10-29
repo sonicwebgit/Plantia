@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/api';
-import { auth } from '../services/firebase';
+import { getAuth } from '../services/firebase';
 import { Card, Button } from './ui';
 import type { User } from '../types';
 
@@ -176,7 +176,7 @@ export const Settings = ({ user }: { user: User }) => {
     };
     
     const handleLogout = () => {
-        auth.signOut();
+        getAuth().signOut();
     };
 
     const getButtonClass = (isActive: boolean) => {

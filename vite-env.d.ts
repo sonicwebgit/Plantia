@@ -1,13 +1,7 @@
-// FIX: Removed the reference to "vite/client" to resolve a type error. The explicit type
-// definitions for `import.meta.env` are sufficient for this project's needs.
+// FIX: Removed environment variable type definitions for keys that are no longer accessed via `import.meta.env`.
+// The project now uses `process.env` for these keys.
 interface ImportMetaEnv {
-  readonly VITE_API_KEY: string;
-  readonly VITE_FIREBASE_API_KEY: string;
-  readonly VITE_FIREBASE_AUTH_DOMAIN: string;
-  readonly VITE_FIREBASE_PROJECT_ID: string;
-  readonly VITE_FIREBASE_STORAGE_BUCKET: string;
-  readonly VITE_FIREBASE_MESSAGING_SENDER_ID: string;
-  readonly VITE_FIREBASE_APP_ID: string;
+  // Other VITE-prefixed variables for this project would be defined here.
 }
 
 interface ImportMeta {
