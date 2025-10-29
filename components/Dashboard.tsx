@@ -87,15 +87,23 @@ export const Dashboard = () => {
   const [plants, setPlants] = useState<Plant[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [showCatManager, setShowCatManager] = useState(false);
 
   const fetchData = async () => {
       setLoading(true);
-      const [plantList, categoryList] = await Promise.all([db.getPlants(), db.getCategories()]);
-      setPlants(plantList);
-      setCategories(categoryList);
-      setLoading(false);
+      setError(null);
+      try {
+        const [plantList, categoryList] = await Promise.all([db.getPlants(), db.getCategories()]);
+        setPlants(plantList);
+        setCategories(categoryList);
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+        setError(err instanceof Error ? err.message : "An unknown error occurred while loading your data.");
+      } finally {
+        setLoading(false);
+      }
   };
     
   useEffect(() => {
@@ -136,6 +144,56 @@ export const Dashboard = () => {
     )
   }
 
+  const renderContent = () => {
+    if (loading) {
+      return <Spinner />;
+    }
+
+    if (error) {
+      return (
+        <Card className="bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800">
+            <div className="p-6 text-center text-red-700 dark:text-red-300">
+                <h3 className="font-bold text-lg">Error Loading Data</h3>
+                <p className="mt-2 text-sm">{error}</p>
+                <Button variant="secondary" onClick={fetchData} className="mt-4">
+                    Try Again
+                </Button>
+            </div>
+        </Card>
+      );
+    }
+    
+    if (plants.length > 0) {
+      return (
+        <>
+          <div className="flex flex-wrap gap-2 items-center">
+              <FilterButton filterId="all" label="All" />
+              {categories.map(cat => <FilterButton key={cat.id} filterId={cat.id} label={cat.name} />)}
+              <FilterButton filterId="uncategorized" label="Uncategorized" />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredPlants.map((plant) => (
+              <PlantCard key={plant.id} plant={plant} categoryName={plant.categoryId ? categoryMap.get(plant.categoryId) : undefined} />
+            ))}
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+        <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+        </svg>
+        <h2 className="mt-4 text-xl font-semibold text-slate-700 dark:text-slate-300">No plants yet!</h2>
+        <p className="mt-1 text-slate-500 dark:text-slate-400">Click the "+" button below to start your collection.</p>
+        <a href="#/add" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700">
+          Add Your First Plant
+        </a>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="p-6 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/50 dark:to-teal-900/50 border border-emerald-100 dark:border-emerald-900">
@@ -150,33 +208,7 @@ export const Dashboard = () => {
       
       {showCatManager && <CategoryManager categories={categories} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onClose={() => setShowCatManager(false)} />}
 
-      {loading ? (
-        <Spinner />
-      ) : plants.length > 0 ? (
-        <>
-        <div className="flex flex-wrap gap-2 items-center">
-            <FilterButton filterId="all" label="All" />
-            {categories.map(cat => <FilterButton key={cat.id} filterId={cat.id} label={cat.name} />)}
-            <FilterButton filterId="uncategorized" label="Uncategorized" />
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredPlants.map((plant) => (
-            <PlantCard key={plant.id} plant={plant} categoryName={plant.categoryId ? categoryMap.get(plant.categoryId) : undefined} />
-          ))}
-        </div>
-        </>
-      ) : (
-        <div className="text-center py-16 px-6 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-slate-400 dark:text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-          </svg>
-          <h2 className="mt-4 text-xl font-semibold text-slate-700 dark:text-slate-300">No plants yet!</h2>
-          <p className="mt-1 text-slate-500 dark:text-slate-400">Click the "+" button below to start your collection.</p>
-          <a href="#/add" className="mt-6 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700">
-            Add Your First Plant
-          </a>
-        </div>
-      )}
+      {renderContent()}
     </div>
   );
 };
