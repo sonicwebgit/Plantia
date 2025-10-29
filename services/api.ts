@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getFirestoreDB, getAuth } from './firebase';
 import {
     collection, query, where, getDocs, getDoc, doc, addDoc, deleteDoc, writeBatch, serverTimestamp,
-    Timestamp, orderBy, updateDoc, deleteField, DocumentSnapshot
+    Timestamp, orderBy, updateDoc, deleteField, DocumentSnapshot, onSnapshot
 } from 'firebase/firestore';
 import type { Plant, CareProfile, Photo, Task, AIHistory, Category, PlantIdentificationResult, StoredData } from '../types';
 
@@ -17,6 +17,7 @@ function getAiInstance(): GoogleGenAI {
         return ai;
     }
 
+    // FIX: Per coding guidelines, the Gemini API key must be obtained from `process.env.API_KEY`.
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
         throw new Error("Gemini API key is missing. Please ensure the API_KEY environment variable is configured for your deployment.");
@@ -193,6 +194,36 @@ function dataFromSnapshot<T>(doc: DocumentSnapshot): T {
 }
 
 const firestoreService = {
+    onPlantsUpdate: (callback: (plants: Plant[]) => void, onError: (error: Error) => void): () => void => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/plants`), orderBy('createdAt', 'desc'));
+        return onSnapshot(q,
+            (snapshot) => {
+                const plants = snapshot.docs.map(doc => dataFromSnapshot<Plant>(doc));
+                callback(plants);
+            },
+            (error) => {
+                console.error("Firestore onPlantsUpdate Error:", error);
+                onError(error);
+            }
+        );
+    },
+    onCategoriesUpdate: (callback: (categories: Category[]) => void, onError: (error: Error) => void): () => void => {
+        const uid = getCurrentUserId();
+        const db = getFirestoreDB();
+        const q = query(collection(db, `users/${uid}/categories`), orderBy('createdAt', 'desc'));
+        return onSnapshot(q,
+            (snapshot) => {
+                const categories = snapshot.docs.map(doc => dataFromSnapshot<Category>(doc));
+                callback(categories);
+            },
+            (error) => {
+                console.error("Firestore onCategoriesUpdate Error:", error);
+                onError(error);
+            }
+        );
+    },
     getPlants: async (): Promise<Plant[]> => {
         const uid = getCurrentUserId();
         const db = getFirestoreDB();
@@ -429,6 +460,14 @@ function promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 const indexedDbService = {
+    onPlantsUpdate: (callback: (plants: Plant[]) => void, onError: (error: Error) => void): () => void => {
+        indexedDbService.getPlants().then(callback).catch(onError);
+        return () => {}; // No-op for unsubscribe
+    },
+    onCategoriesUpdate: (callback: (categories: Category[]) => void, onError: (error: Error) => void): () => void => {
+        indexedDbService.getCategories().then(callback).catch(onError);
+        return () => {}; // No-op for unsubscribe
+    },
     getPlants: async (): Promise<Plant[]> => {
         const db = await dbPromise;
         return promisifyRequest(db.transaction('plants').objectStore('plants').getAll());

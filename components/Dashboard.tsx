@@ -91,23 +91,36 @@ export const Dashboard = () => {
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [showCatManager, setShowCatManager] = useState(false);
 
-  const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [plantList, categoryList] = await Promise.all([db.getPlants(), db.getCategories()]);
-        setPlants(plantList);
-        setCategories(categoryList);
-      } catch (err) {
-        console.error("Failed to load dashboard data:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred while loading your data.");
-      } finally {
-        setLoading(false);
-      }
-  };
-    
   useEffect(() => {
-    fetchData();
+    setLoading(true);
+    setError(null);
+
+    const handleError = (err: Error) => {
+        console.error("Failed to synchronize dashboard data:", err);
+        const friendlyMessage = "Could not sync data. This might be a network or permissions issue. Please check your connection and refresh.";
+        setError(friendlyMessage);
+        setLoading(false);
+    };
+
+    const unsubscribePlants = db.onPlantsUpdate(
+        (plantList) => {
+            setPlants(plantList);
+            setLoading(false);
+        },
+        handleError
+    );
+
+    const unsubscribeCategories = db.onCategoriesUpdate(
+        (categoryList) => {
+            setCategories(categoryList);
+        },
+        handleError
+    );
+
+    return () => {
+        unsubscribePlants();
+        unsubscribeCategories();
+    };
   }, []);
   
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
@@ -119,15 +132,22 @@ export const Dashboard = () => {
   }, [plants, activeFilter]);
 
   const handleAddCategory = async (name: string) => {
-    await db.addCategory(name);
-    const categoryList = await db.getCategories();
-    setCategories(categoryList);
+    try {
+        await db.addCategory(name);
+    } catch (err) {
+        console.error("Failed to add category:", err);
+        alert(`Error: Could not add category. ${err instanceof Error ? err.message : ''}`);
+    }
   };
 
   const handleDeleteCategory = async (id: string) => {
     if (window.confirm("Are you sure? Deleting a category will uncategorize any plants within it.")) {
-        await db.deleteCategory(id);
-        fetchData(); // Refetch everything to ensure state is consistent
+        try {
+            await db.deleteCategory(id);
+        } catch (err) {
+            console.error("Failed to delete category:", err);
+            alert(`Error: Could not delete category. ${err instanceof Error ? err.message : ''}`);
+        }
     }
   };
 
@@ -155,8 +175,8 @@ export const Dashboard = () => {
             <div className="p-6 text-center text-red-700 dark:text-red-300">
                 <h3 className="font-bold text-lg">Error Loading Data</h3>
                 <p className="mt-2 text-sm">{error}</p>
-                <Button variant="secondary" onClick={fetchData} className="mt-4">
-                    Try Again
+                <Button variant="secondary" onClick={() => window.location.reload()} className="mt-4">
+                    Refresh Page
                 </Button>
             </div>
         </Card>
